@@ -29,23 +29,30 @@ type Analyzer interface {
 // Gateway 主备双渠道 AI 网关：持有 default（必填）与 backup（可选）渠道，
 // 负责渠道与模型选择，并在默认渠道失败时自动切换备用渠道兜底。
 type Gateway struct {
-	defaultCh   *config.ChannelConfig // 默认渠道（id=default，必填）
-	backupCh    *config.ChannelConfig // 备用渠道（id=backup，可为 nil）
-	mock        bool                  // 是否启用模拟 AI（联调用）
-	timeout     time.Duration         // 单次 AI 调用超时
-	maxRetries  int                   // 单渠道内失败重试次数
-	temperature float64               // 采样温度（越低输出越稳定）
-	topP        float64               // 核采样概率（控制随机性）
+	defaultCh                *config.ChannelConfig // 默认渠道（id=default，必填）
+	backupCh                 *config.ChannelConfig // 备用渠道（id=backup，可为 nil）
+	mock                     bool                  // 是否启用模拟 AI（联调用）
+	timeout                  time.Duration         // 单次 AI 调用超时
+	maxRetries               int                   // 单渠道内失败重试次数
+	temperature              float64               // 采样温度（越低输出越稳定）
+	topP                     float64               // 核采样概率（控制随机性）
+	disabledThinkingKeywords []string              // 命中即显式关闭思考的模型关键词列表（来自配置，兜底内置默认）
 }
 
 // NewGateway 根据配置构建 AI 网关，按渠道 id 归类为 default / backup。
 func NewGateway(cfg config.AIConfig) *Gateway {
+	// 配置未设置（缺失/置空）时回退内置默认，保证与旧硬编码行为一致
+	disabledThinkingKeywords := cfg.DisabledThinkingKeywords
+	if len(disabledThinkingKeywords) == 0 {
+		disabledThinkingKeywords = config.DefaultDisabledThinkingKeywords
+	}
 	g := &Gateway{
-		mock:        cfg.Mock,
-		timeout:     time.Duration(cfg.Timeout) * time.Second,
-		maxRetries:  cfg.MaxRetries,
-		temperature: cfg.Temperature,
-		topP:        cfg.TopP,
+		mock:                     cfg.Mock,
+		timeout:                  time.Duration(cfg.Timeout) * time.Second,
+		maxRetries:               cfg.MaxRetries,
+		temperature:              cfg.Temperature,
+		topP:                     cfg.TopP,
+		disabledThinkingKeywords: disabledThinkingKeywords,
 	}
 	for i := range cfg.Channels {
 		switch cfg.Channels[i].ID {
@@ -125,12 +132,13 @@ func (g *Gateway) newAnalyzer(ch *config.ChannelConfig, modelName string) Analyz
 		return &MockAnalyzer{channelID: ch.ID, modelName: modelName}
 	}
 	return &goaiAnalyzer{
-		channel:     ch,
-		modelName:   modelName,
-		timeout:     g.timeout,
-		maxRetries:  g.maxRetries,
-		temperature: g.temperature,
-		topP:        g.topP,
+		channel:                  ch,
+		modelName:                modelName,
+		timeout:                  g.timeout,
+		maxRetries:               g.maxRetries,
+		temperature:              g.temperature,
+		topP:                     g.topP,
+		disabledThinkingKeywords: g.disabledThinkingKeywords,
 	}
 }
 

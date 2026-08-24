@@ -47,14 +47,15 @@ type AuthConfig struct {
 // 固定支持两个渠道 id：default（默认/主渠道）与 backup（备用渠道），
 // 其中 default 必填，backup 可选。
 type AIConfig struct {
-	Timeout          int             `mapstructure:"timeout"`            // 单次 AI 调用超时（秒）
-	MaxRetries       int             `mapstructure:"max_retries"`        // 单渠道内失败重试次数
-	Mock             bool            `mapstructure:"mock"`               // 是否启用模拟 AI（本地无 API Key 联调用）
-	MaxImageBytes    int64           `mapstructure:"max_image_bytes"`    // 图片大小上限（字节），默认 10MB
-	AllowPrivateURLs bool            `mapstructure:"allow_private_urls"` // 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）
-	Temperature      float64         `mapstructure:"temperature"`        // 采样温度（0~2，越低输出越稳定，默认 0.2）
-	TopP             float64         `mapstructure:"top_p"`              // 核采样（0~1，控制随机性，默认 0.9）
-	Channels         []ChannelConfig `mapstructure:"channels"`           // 渠道列表（id 仅允许 default / backup）
+	Timeout                  int             `mapstructure:"timeout"`                    // 单次 AI 调用超时（秒）
+	MaxRetries               int             `mapstructure:"max_retries"`                // 单渠道内失败重试次数
+	Mock                     bool            `mapstructure:"mock"`                       // 是否启用模拟 AI（本地无 API Key 联调用）
+	MaxImageBytes            int64           `mapstructure:"max_image_bytes"`            // 图片大小上限（字节），默认 10MB
+	AllowPrivateURLs         bool            `mapstructure:"allow_private_urls"`         // 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）
+	Temperature              float64         `mapstructure:"temperature"`                // 采样温度（0~2，越低输出越稳定，默认 0.2）
+	TopP                     float64         `mapstructure:"top_p"`                      // 核采样（0~1，控制随机性，默认 0.9）
+	DisabledThinkingKeywords []string        `mapstructure:"disabled_thinking_keywords"` // 命中即显式关闭思考的模型关键词列表（如 qwen/mimo/deepseek）
+	Channels                 []ChannelConfig `mapstructure:"channels"`                   // 渠道列表（id 仅允许 default / backup）
 }
 
 // 渠道 id 常量（固定主备双渠道）。
@@ -113,6 +114,14 @@ func EnsureDataConfig() (string, error) {
 // 默认图片大小上限：10MB（与需求对齐）
 const DefaultMaxImageBytes int64 = 10 * 1024 * 1024
 
+// DefaultDisabledThinkingKeywords 默认「命中即显式关闭思考」的模型关键词列表。
+// 与 default.toml 模板保持一致；配置文件缺失该键或置空时按此兜底（与旧硬编码行为等价）。
+var DefaultDisabledThinkingKeywords = []string{
+	"qwen",     // Qwen3 系列（含 -Thinking 后缀变体）
+	"mimo",     // MiMo 系列（默认开启思考）
+	"deepseek", // DeepSeek 系列（R1/思考模式）
+}
+
 // Load 从指定路径加载 TOML 配置，填充默认值并做合法性校验。
 func Load(path string) (*Config, error) {
 	v := viper.New()
@@ -128,6 +137,7 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("ai.max_image_bytes", DefaultMaxImageBytes)
 	v.SetDefault("ai.temperature", 0.2)
 	v.SetDefault("ai.top_p", 0.9)
+	v.SetDefault("ai.disabled_thinking_keywords", DefaultDisabledThinkingKeywords)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)

@@ -76,12 +76,13 @@ const imageAnalysisSystemPrompt = `你是一名专业的图片内容审核与 SE
 
 // goaiAnalyzer 基于 goai 的真实分析器：调用大模型完成图片识别与结构化输出。
 type goaiAnalyzer struct {
-	channel     *config.ChannelConfig // 所属渠道
-	modelName   string                // 使用的模型标识
-	timeout     time.Duration         // 单次调用超时
-	maxRetries  int                   // 单渠道内失败重试次数
-	temperature float64               // 采样温度（0 表示不设置，走模型默认）
-	topP        float64               // 核采样概率（0 表示不设置）
+	channel                  *config.ChannelConfig // 所属渠道
+	modelName                string                // 使用的模型标识
+	timeout                  time.Duration         // 单次调用超时
+	maxRetries               int                   // 单渠道内失败重试次数
+	temperature              float64               // 采样温度（0 表示不设置，走模型默认）
+	topP                     float64               // 核采样概率（0 表示不设置）
+	disabledThinkingKeywords []string              // 命中即显式关闭思考的模型关键词列表（配置注入，见 gateway.NewGateway）
 }
 
 // AnalyzeImage 调用大模型分析图片：
@@ -139,7 +140,7 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 		providerOptions["useResponsesAPI"] = true
 	}
 	// 命中「强制思考需显式关闭」名单的模型，显式关闭思考（json_object 下仍保留，提升稳定性）
-	if shouldDisableThinking(a.modelName) {
+	if a.shouldDisableThinking() {
 		switch a.channel.Type {
 		case config.ChannelTypeOpenAIChat:
 			providerOptions["enable_thinking"] = false
@@ -231,20 +232,13 @@ func truncateForLog(s string) string {
 	return s
 }
 
-// disabledThinkingKeywords 硬编码的「强制思考、需显式关闭」的模型关键词列表。
-// 模型 id 包含任一关键词（不区分大小写、包含匹配）时，请求会带上关闭思考参数；
+// shouldDisableThinking 判断当前模型 id 是否命中「需显式关闭思考」列表。
+// 关键词列表由配置 ai.disabled_thinking_keywords 注入（缺失时回退内置默认），
 // 不在列表中的模型不传思考参数，由模型/网关自行决定。
-var disabledThinkingKeywords = []string{
-	"qwen", // Qwen3 系列（含 -Thinking 后缀变体）
-	"mimo",
-	"deepseek",
-}
-
-// shouldDisableThinking 判断模型 id 是否命中「需显式关闭思考」列表。
-func shouldDisableThinking(modelID string) bool {
-	lower := strings.ToLower(modelID)
-	for _, kw := range disabledThinkingKeywords {
-		if strings.Contains(lower, kw) {
+func (a *goaiAnalyzer) shouldDisableThinking() bool {
+	lower := strings.ToLower(a.modelName)
+	for _, kw := range a.disabledThinkingKeywords {
+		if kw != "" && strings.Contains(lower, strings.ToLower(kw)) {
 			return true
 		}
 	}
