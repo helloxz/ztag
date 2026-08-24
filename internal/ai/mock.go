@@ -17,9 +17,10 @@ type MockAnalyzer struct {
 // AnalyzeImage 返回一组固定的模拟分析结果（二层分类结构）。
 func (m *MockAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeRequest) (*model.AnalyzeResult, error) {
 	// 骨架/联调阶段忽略 ctx 与 req，仅返回固定结果
+	// 示例按新约定：前 1-2 个为核心关键词，后 2-3 个为长尾关键词
 	return &model.AnalyzeResult{
-		Keywords:    []string{"自然风景", "蓝天", "白云"},
-		Description: "模拟输出：蓝天白云下的宁静自然风景。",
+		Keywords:    []string{"自然风景", "高山湖泊森林风景照"},
+		Description: "模拟输出：高清自然风景图片，蓝天白云倒映高山湖泊，画面宁静治愈，适合作为桌面壁纸与旅行灵感参考。",
 		Classification: model.Classification{
 			Category:   "normal",
 			Score:      0.98,

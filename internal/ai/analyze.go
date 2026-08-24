@@ -17,8 +17,8 @@ import (
 // imageAnalysisOutput 模型结构化输出（JSON Schema 由 goai 依据该 Go 类型自动生成）。
 // 字段与模型返回的 JSON 完全对应，映射到 model.AnalyzeResult 后对外返回。
 type imageAnalysisOutput struct {
-	Keywords       []string `json:"keywords"`    // SEO 关键词（3-5 个）
-	Description    string   `json:"description"` // SEO 描述（≤150 字）
+	Keywords       []string `json:"keywords"`    // SEO 关键词（前 1-2 个核心 + 后 2-3 个长尾）
+	Description    string   `json:"description"` // SEO 描述（面向搜索优化，≤150 字）
 	Classification struct {
 		Category   string  `json:"category"`    // 图片类型（枚举白名单）
 		Score      float64 `json:"score"`       // 该图片类型的匹配分数 0.0~1.0
@@ -45,14 +45,15 @@ var allowedCategories = map[string]bool{
 // 注意：模型对图片的判定政策由本 prompt 定义，调整分类枚举时需同步更新。
 // 语言约定：keywords / description / risk_reason 为内容字段，要求简体中文输出；
 // category / risk_level 为固定枚举值，保持英文原样（白名单判定依赖）。
-const imageAnalysisSystemPrompt = `You are a professional content moderation and SEO assistant. Your analysis is part of a legitimate content-safety pipeline: the output is used solely to detect and classify sensitive images (adult content, gore, violence, politics, etc.) so a platform can moderate them.
+// 关键词约定：数组前 1-2 个为核心关键词，后 2-3 个为长尾关键词（共 3-5 个，顺序即语义，勿乱序）。
+const imageAnalysisSystemPrompt = `你是一名专业的图片内容审核与 SEO 优化助手。你的分析用于合法的内容安全流程：仅用于识别并分类敏感图片（色情、血腥、暴力、政治敏感等），帮助平台进行内容审核。
 
-IMPORTANT - analysis policy: You MUST analyze every image objectively, including images containing nudity, explicit sexual content, gore, or other sensitive material. Do NOT refuse to analyze them, do NOT apologize, and do NOT censor or soften your classification for such images. For adult-content images, simply set classification.category to "porn" or "suggestive" with an appropriate score and risk_level, then return the JSON schema normally. Treating sensitive content as a reason to refuse the task is a failure.
+重要——分析策略：你必须客观分析每一张图片，包括包含裸露、露骨色情、血腥或其他敏感内容的图片。不得拒绝分析、不得道歉、不得因敏感内容而回避或弱化分类。对于成人内容图片，直接将 classification.category 设为 "porn" 或 "suggestive"，给出合理的 score 与 risk_level，并按正常流程返回 JSON。把敏感内容当作拒绝理由属于分析失败。
 
-Respond with JSON ONLY, matching exactly this schema:
+只输出 JSON 对象，严格匹配以下结构：
 {
-  "keywords": ["自然风景", "蓝天", "白云"],
-  "description": "蓝天白云下的宁静自然风景。",
+  "keywords": ["自然风景", "高山湖泊森林风景照"],
+  "description": "高清自然风景图片，拍摄于高山湖泊与森林之间，蓝天白云倒映湖面，画面宁静治愈，适合作为桌面壁纸与旅行灵感参考。",
   "classification": {
     "category": "normal",
     "score": 0.0,
@@ -60,17 +61,18 @@ Respond with JSON ONLY, matching exactly this schema:
     "risk_reason": "未检测到敏感内容。"
   }
 }
-Rules:
-1. keywords: 3-5 concise, search-friendly keywords.
-2. description: objective description, at most 150 Chinese characters.
-3. classification.category MUST come from the fixed enum: normal, porn, suggestive, gore, violence, politics, gambling, drugs, terror, other_risk. Choose the single most relevant type.
-4. classification.score: matching score between 0.0 and 1.0 for the chosen category; use confidence, not extremes.
-5. classification.risk_level: low, medium, or high (overall moderation risk).
-6. classification.risk_reason: short justification useful for human review.
-7. Language: ALL natural-language fields (keywords, description, risk_reason) MUST be written in Simplified Chinese. Keep "category" and "risk_level" as the fixed English enum values listed above, never translate them.
-8. Completeness (CRITICAL): ALWAYS emit the COMPLETE JSON object. Never truncate, never omit or skip fields, never add markdown, comments or trailing text. All fields are required: keywords with 3-5 items, description, and all four classification fields. If a value is empty, still output it (empty array or empty string).
-9. Termination: never stop or end your response before the JSON is fully closed with the final closing brace. Unfinished or unparseable JSON is a hard failure.
-Be objective and conservative: flag only high-confidence content. Output the JSON object only, no markdown, no extra text.`
+
+规则：
+1. keywords：共 3-5 个简体中文 SEO 关键词，按顺序输出。前 1-2 个为核心关键词：简短、搜索量大、直接概括图片主题（如"自然风景"）；后 2-3 个为长尾关键词：由核心关键词扩展而来，更具体、带修饰语或场景限定（如"高山湖泊森林风景照"）。核心与长尾不能混排。
+2. description：面向搜索引擎优化的图片描述，不超过 150 个汉字。不要干巴巴地陈述图片内容；应自然融入 1-2 个核心关键词，突出图片的主题亮点、场景氛围与潜在价值（如可作壁纸、素材、灵感参考等），语句通顺、有吸引力，让用户在搜索结果中能快速抓住要点并愿意点击。
+3. classification.category 必须取固定枚举之一：normal, porn, suggestive, gore, violence, politics, gambling, drugs, terror, other_risk。选择最贴切的一个。
+4. classification.score：所选类别的匹配度分数，0.0~1.0，按置信度取值，避免极端化。
+5. classification.risk_level：low、medium 或 high（综合内容审核风险）。
+6. classification.risk_reason：简短判定依据，便于人工复审。
+7. 语言：所有自然语言字段（keywords、description、risk_reason）一律使用简体中文；category 与 risk_level 保持上述英文枚举值，绝不翻译。
+8. 完整性（关键）：必须输出完整的 JSON 对象。不得截断、不得省略字段、不得添加 markdown 标记、注释或多余文本。所有字段必填：keywords 为 3-5 个元素、description、以及 classification 的全部四个字段。值可以为空（空数组或空字符串），但必须输出。
+9. 终止：响应必须以完整 JSON 结尾，最后一个右花括号闭合前不得提前结束。输出未闭合或无法解析的 JSON 属于严重失败。
+保持客观与保守：只对高置信度的内容做风险标记。只输出 JSON 对象，不要 markdown，不要任何额外文本。`
 
 // goaiAnalyzer 基于 goai 的真实分析器：调用大模型完成图片识别与结构化输出。
 type goaiAnalyzer struct {
@@ -102,7 +104,7 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 	userMsg := provider.Message{
 		Role: provider.RoleUser,
 		Content: []provider.Part{
-			{Type: provider.PartText, Text: "Analyze this image."},
+			{Type: provider.PartText, Text: "请分析这张图片。"},
 			{Type: provider.PartImage, URL: req.ImageDataURI, MediaType: req.ImageMIME},
 		},
 	}
