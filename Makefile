@@ -1,24 +1,24 @@
-# ZTAG 常用开发命令
+# Common development commands for ZTAG
 BINARY := bin/ztag
 
 .PHONY: build run tidy vet clean
 
-## 编译服务
+## Build the service (optimized)
 build:
-	go build -o $(BINARY) ./cmd/server
+	go build -trimpath -ldflags="-s -w" -o $(BINARY) ./cmd/server
 
-## 直接运行（首次启动会自动生成 data/config.toml）
+## Run directly (auto-generates data/config.toml on first run)
 run:
 	go run ./cmd/server
 
-## 整理依赖
+## Tidy dependencies
 tidy:
 	go mod tidy
 
-## 静态检查
+## Vet
 vet:
 	go vet ./...
 
-## 清理构建产物
+## Clean build artifacts
 clean:
 	rm -rf bin

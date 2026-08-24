@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -23,13 +24,21 @@ import (
 	"github.com/helloxz/ztag/internal/handler"
 	"github.com/helloxz/ztag/internal/router"
 	"github.com/helloxz/ztag/internal/service"
+	"github.com/helloxz/ztag/internal/version"
 )
 
 func main() {
 	// 支持通过 -config 指定配置文件路径（docker 部署时可按需覆盖）
 	configFlag := flag.String("config", "", "config file path (default: data/config.toml, auto-created if missing)")
+	showVersion := flag.Bool("v", false, "print version and exit")
+	showVersionLong := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
+	// 优先处理版本号查询：直接打印并退出，不加载配置/启动服务
+	if *showVersion || *showVersionLong {
+		fmt.Println(version.Version)
+		os.Exit(0)
+	}
 	// ---------- 1. 确保运行时配置文件存在（data/config.toml） ----------
 	cfgPath := *configFlag
 	if cfgPath == "" {
