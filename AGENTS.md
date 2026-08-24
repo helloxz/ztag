@@ -28,6 +28,7 @@ router → handler → service → ai
    - 图片分析 `data`：`keywords`(3-5) + `description`(≤150字) + `classification{category, score, risk_level, risk_reason}` + `model_id`(实际模型) + `elapsed_ms`(毫秒耗时)；`category` 枚举固定白名单 `normal|porn|suggestive|gore|violence|politics|gambling|drugs|terror|other_risk`
 4. **性能与安全**：始终传递 `context`（超时/取消）；图片 URL 必须校验（≤10MB、图片 MIME、SSRF 默认拦截内网）；AI 调用失败按主备切换（default→backup→报错）；避免重复请求与不必要开销
 5. **结构**：新增路由只进 `internal/router`；中间件进 `internal/middleware`；助手函数进 `internal/helper`；对外接口统一挂 `/api/v1` 分组
+6. **限制：** 未经允许不得读取data/config.toml 内容
 
 ## Notes
 - 主备双渠道：`[[ai.channels]]` 的 `id` 仅允许 `default`（必填）/ `backup`（可选）；`models` 为模型标识字符串数组；`type` ∈ `openai-chat | openai-response | anthropic`

@@ -52,6 +52,8 @@ type AIConfig struct {
 	Mock             bool            `mapstructure:"mock"`               // 是否启用模拟 AI（本地无 API Key 联调用）
 	MaxImageBytes    int64           `mapstructure:"max_image_bytes"`    // 图片大小上限（字节），默认 10MB
 	AllowPrivateURLs bool            `mapstructure:"allow_private_urls"` // 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）
+	Temperature      float64         `mapstructure:"temperature"`        // 采样温度（0~2，越低输出越稳定，默认 0.2）
+	TopP             float64         `mapstructure:"top_p"`              // 核采样（0~1，控制随机性，默认 0.9）
 	Channels         []ChannelConfig `mapstructure:"channels"`           // 渠道列表（id 仅允许 default / backup）
 }
 
@@ -59,6 +61,13 @@ type AIConfig struct {
 const (
 	ChannelIDDefault = "default" // 默认渠道（必填）
 	ChannelIDBackup  = "backup"  // 备用渠道（可选）
+)
+
+// 渠道协议类型常量（决定 AI 调用的接口形态）。
+const (
+	ChannelTypeOpenAIChat     = "openai-chat"     // OpenAI Chat Completions 兼容接口
+	ChannelTypeOpenAIResponse = "openai-response" // OpenAI Responses 兼容接口
+	ChannelTypeAnthropic      = "anthropic"       // Anthropic Messages 兼容接口（含阿里云等）
 )
 
 // ChannelConfig 单个 AI 渠道（对应一个后端大模型服务商或兼容网关）。
@@ -117,6 +126,8 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("ai.timeout", 60)
 	v.SetDefault("ai.max_retries", 2)
 	v.SetDefault("ai.max_image_bytes", DefaultMaxImageBytes)
+	v.SetDefault("ai.temperature", 0.2)
+	v.SetDefault("ai.top_p", 0.9)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
@@ -169,7 +180,7 @@ func (c *Config) validate() error {
 		seen[ch.ID] = true
 
 		switch ch.Type {
-		case "openai-chat", "openai-response", "anthropic":
+		case ChannelTypeOpenAIChat, ChannelTypeOpenAIResponse, ChannelTypeAnthropic:
 		default:
 			return fmt.Errorf("channel %q type must be one of openai-chat / openai-response / anthropic, got: %q", ch.ID, ch.Type)
 		}

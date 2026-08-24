@@ -48,6 +48,8 @@ max_retries = 2       # default 失败后切换/重试次数
 mock = false          # 模拟 AI（无 API Key 联调用）
 max_image_bytes = 10485760   # 图片大小上限（默认 10MB）
 allow_private_urls = false   # 放行内网图片 URL（SSRF 防护，仅本地联调用）
+temperature = 0.2            # 采样温度（越低输出越稳定，分类场景建议低值）
+top_p = 0.9                  # 核采样（控制随机性，0 表示不设置）
 
 [[ai.channels]]
 id = "default"                # 渠道唯一标识：default | backup

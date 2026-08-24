@@ -16,11 +16,11 @@ import (
 // 模型实例只做一次构建，请求级参数（超时/重试/prompt）在调用时通过 goai Option 传入。
 func buildModel(ch *config.ChannelConfig, modelName string) (provider.LanguageModel, error) {
 	switch ch.Type {
-	case "openai-chat", "openai-response":
+	case config.ChannelTypeOpenAIChat, config.ChannelTypeOpenAIResponse:
 		return openai.Chat(modelName,
 			openai.WithBaseURL(ch.BaseURL),
 			openai.WithAPIKey(ch.APIKey)), nil
-	case "anthropic":
+	case config.ChannelTypeAnthropic:
 		return anthropic.Chat(modelName,
 			anthropic.WithBaseURL(ch.BaseURL),
 			anthropic.WithAPIKey(ch.APIKey)), nil

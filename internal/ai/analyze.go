@@ -3,6 +3,8 @@ package ai
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/helloxz/ztag/internal/config"
@@ -42,7 +44,11 @@ var allowedCategories = map[string]bool{
 // 注意：模型对图片的判定政策由本 prompt 定义，调整分类枚举时需同步更新。
 // 语言约定：keywords / description / risk_reason 为内容字段，要求简体中文输出；
 // category / risk_level 为固定枚举值，保持英文原样（白名单判定依赖）。
-const imageAnalysisSystemPrompt = `You are an expert image moderation and SEO assistant. Analyze the provided image and respond with JSON ONLY, matching exactly this schema:
+const imageAnalysisSystemPrompt = `You are a professional content moderation and SEO assistant. Your analysis is part of a legitimate content-safety pipeline: the output is used solely to detect and classify sensitive images (adult content, gore, violence, politics, etc.) so a platform can moderate them.
+
+IMPORTANT - analysis policy: You MUST analyze every image objectively, including images containing nudity, explicit sexual content, gore, or other sensitive material. Do NOT refuse to analyze them, do NOT apologize, and do NOT censor or soften your classification for such images. For adult-content images, simply set classification.category to "porn" or "suggestive" with an appropriate score and risk_level, then return the JSON schema normally. Treating sensitive content as a reason to refuse the task is a failure.
+
+Respond with JSON ONLY, matching exactly this schema:
 {
   "keywords": ["自然风景", "蓝天", "白云"],
   "description": "蓝天白云下的宁静自然风景。",
@@ -61,14 +67,18 @@ Rules:
 5. classification.risk_level: low, medium, or high (overall moderation risk).
 6. classification.risk_reason: short justification useful for human review.
 7. Language: ALL natural-language fields (keywords, description, risk_reason) MUST be written in Simplified Chinese. Keep "category" and "risk_level" as the fixed English enum values listed above, never translate them.
+8. Completeness (CRITICAL): ALWAYS emit the COMPLETE JSON object. Never truncate, never omit or skip fields, never add markdown, comments or trailing text. All fields are required: keywords with 3-5 items, description, and all four classification fields. If a value is empty, still output it (empty array or empty string).
+9. Termination: never stop or end your response before the JSON is fully closed with the final closing brace. Unfinished or unparseable JSON is a hard failure.
 Be objective and conservative: flag only high-confidence content. Output the JSON object only, no markdown, no extra text.`
 
 // goaiAnalyzer 基于 goai 的真实分析器：调用大模型完成图片识别与结构化输出。
 type goaiAnalyzer struct {
-	channel    *config.ChannelConfig // 所属渠道
-	modelName  string                // 使用的模型标识
-	timeout    time.Duration         // 单次调用超时
-	maxRetries int                   // 单渠道内失败重试次数
+	channel     *config.ChannelConfig // 所属渠道
+	modelName   string                // 使用的模型标识
+	timeout     time.Duration         // 单次调用超时
+	maxRetries  int                   // 单渠道内失败重试次数
+	temperature float64               // 采样温度（0 表示不设置，走模型默认）
+	topP        float64               // 核采样概率（0 表示不设置）
 }
 
 // AnalyzeImage 调用大模型分析图片：
@@ -99,17 +109,71 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 	opts := []goai.Option{
 		goai.WithSystem(imageAnalysisSystemPrompt),
 		goai.WithMessages(userMsg),
-		goai.WithMaxOutputTokens(1024),    // 结构化输出按需求落到 JSON 即可，无需过长
+		goai.WithMaxOutputTokens(4096),    // 结构化输出完整 JSON（中文描述较长），放宽到 4096 防截断
 		goai.WithMaxRetries(a.maxRetries), // 渠道内 429/5xx 自动重试
 	}
 	if a.timeout > 0 {
 		opts = append(opts, goai.WithTimeout(a.timeout))
 	}
+	// 降低随机性，使分类/描述输出更稳定可复现：
+	// 结构化审核任务追求稳定而不是创意，温度与 top_p 均取较低/收敛值
+	if a.temperature > 0 {
+		opts = append(opts, goai.WithTemperature(a.temperature))
+	}
+	if a.topP > 0 {
+		opts = append(opts, goai.WithTopP(a.topP))
+	}
+
+	// ProviderOptions 必须合并为一次调用：goai 的 WithProviderOptions 为整体赋值，
+	// 多次调用会相互覆盖（后一次覆盖前一次），不能分开传。
+	providerOptions := map[string]any{}
+
+	// 按渠道协议显式指定 OpenAI 端点：
+	//   - openai-chat     → Chat Completions（/chat/completions），兼容网关（vLLM/DashScope 等）通常只实现该端点
+	//   - openai-response → Responses API（/responses）
+	//   - anthropic       → 无此开关，走 native Messages
+	// goai openai provider 默认全部走 Responses API，此处必须按配置的 type 做动态判断，
+	// 否则 openai-chat 渠道会在不支持 /responses 的兼容网关上返回 404。
+	switch a.channel.Type {
+	case config.ChannelTypeOpenAIChat:
+		providerOptions["useResponsesAPI"] = false
+	case config.ChannelTypeOpenAIResponse:
+		providerOptions["useResponsesAPI"] = true
+	}
+
+	// 模型 id 命中「强制思考需显式关闭」列表时，向请求传递关闭思考参数：
+	//   - openai-chat：enable_thinking（DashScope/one-api 等）与 chat_template_kwargs（vLLM 系）
+	//     两个候选键，兼容主流 Qwen 网关；goai 会把未知 ProviderOptions 键原样写入请求体
+	//   - anthropic：thinking: {type: disabled}
+	//   - openai-response：goai 该路径不透传 ProviderOptions，故不传（Qwen 网关均走 chat 路径）
+	// 未命中列表的模型不传任何思考参数，由模型/网关自行决定。
+	if shouldDisableThinking(a.modelName) {
+		switch a.channel.Type {
+		case config.ChannelTypeOpenAIChat:
+			providerOptions["enable_thinking"] = false
+			providerOptions["chat_template_kwargs"] = map[string]any{"enable_thinking": false}
+		case config.ChannelTypeAnthropic:
+			providerOptions["thinking"] = map[string]any{"type": "disabled"}
+		}
+	}
+
+	if len(providerOptions) > 0 {
+		opts = append(opts, goai.WithProviderOptions(providerOptions))
+	}
 
 	result, err := goai.GenerateObject[imageAnalysisOutput](ctx, lm, opts...)
 	if err != nil {
-		// 失败原因透传给网关层判断是否切换渠道
-		return nil, fmt.Errorf("AI analysis failed: %w", err)
+		// 结构化输出解析失败（模型输出截断/不完整 JSON）多为偶发，
+		// 且 goai 的 HTTP 层重试不覆盖此类错误，这里自动重试一次；
+		// 本次重试不计入 maxRetries（那是针对网络/5xx 的）
+		if isStructuredOutputParseError(err) {
+			slog.Warn("structured output parse failed, retrying once", "err", err)
+			result, err = goai.GenerateObject[imageAnalysisOutput](ctx, lm, opts...)
+		}
+		if err != nil {
+			// 失败原因透传给网关层判断是否切换渠道
+			return nil, fmt.Errorf("AI analysis failed: %w", err)
+		}
 	}
 
 	out := toAnalyzeResult(&result.Object)
@@ -118,6 +182,32 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 		out.ModelID = a.modelName
 	}
 	return out, nil
+}
+
+// isStructuredOutputParseError 判断错误是否为结构化输出（JSON）解析失败。
+// goai 在模型输出无法解析为 JSON 时会返回 "parsing structured output" 前缀的错误，
+// 这类错误代表模型输出质量问题（截断/非 JSON），适合整体重试一次而非切渠道。
+func isStructuredOutputParseError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "parsing structured output")
+}
+
+// disabledThinkingKeywords 硬编码的「强制思考、需显式关闭」的模型关键词列表。
+// 模型 id 包含任一关键词（不区分大小写、包含匹配）时，请求会带上关闭思考参数；
+// 不在列表中的模型不传思考参数，由模型/网关自行决定（避免传入不支持的参数产生副作用）。
+var disabledThinkingKeywords = []string{
+	"qwen", // Qwen3 系列（含 -Thinking 后缀变体）
+	"mimo",
+}
+
+// shouldDisableThinking 判断模型 id 是否命中「需显式关闭思考」列表。
+func shouldDisableThinking(modelID string) bool {
+	lower := strings.ToLower(modelID)
+	for _, kw := range disabledThinkingKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // toAnalyzeResult 将模型结构化输出映射为对外领域模型，并对分类做白名单归一化。
