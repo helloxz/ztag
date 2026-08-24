@@ -1,0 +1,53 @@
+# ============================================================
+# ZTAG 服务默认配置模板
+# ------------------------------------------------------------
+# 首次启动时，若 data/config.toml 不存在，本文件会被自动拷贝到
+# data/config.toml 作为运行时配置（便于 docker 挂载 data 目录）。
+# 之后请修改 data/config.toml，本模板不再参与加载。
+# ============================================================
+
+[server]
+addr = ":8080"          # HTTP 监听地址
+mode = "debug"          # gin 运行模式：debug | release
+
+[log]
+level = "info"          # 日志级别：debug | info | warn | error
+
+[auth]
+enabled = false         # 是否开启对外 API 鉴权（建议生产开启）
+api_keys = []           # 允许访问的 API Key 列表，enabled=true 时生效
+
+[ai]
+timeout = 60                  # 单次 AI 调用超时（秒）
+max_retries = 2               # 单渠道内失败重试次数
+mock = false                  # 是否启用模拟 AI（本地无 API Key 联调时可设 true）
+max_image_bytes = 10485760    # 图片大小上限（字节），默认 10MB
+allow_private_urls = false    # 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）
+
+# ---------------- 主备双渠道配置 ----------------
+# 固定支持两个渠道 id（唯一标识）：
+#   default : 默认渠道（必填），普通请求走这里；
+#   backup  : 备用渠道（可选，可整节删除），default 失败时切换兜底。
+# 每个渠道可配置多个模型（models 为模型标识字符串数组）。
+# type 支持三种协议：
+#   openai-chat     : OpenAI Chat Completions 兼容接口
+#   openai-response : OpenAI Responses 兼容接口
+#   anthropic       : Anthropic Messages 兼容接口（含阿里云等兼容网关）
+[[ai.channels]]
+id = "default"
+type = "openai-chat"          # 协议类型
+base_url = "https://api.openai.com/v1"
+api_key = "replace-with-your-api-key"
+models = [
+  "gpt-4o-mini",
+  "gpt-4o",
+]
+
+[[ai.channels]]
+id = "backup"                 # Anthropic 兼容备用渠道示例（阿里云）
+type = "anthropic"
+base_url = "https://dashscope.aliyuncs.com/api/v2/apps/anthropic"
+api_key = "replace-with-your-api-key"
+models = [
+  "claude-3-5-sonnet",
+]
