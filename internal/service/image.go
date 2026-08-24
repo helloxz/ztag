@@ -48,11 +48,11 @@ func (s *ImageService) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 			return nil, model.NewBizError(err.Error())
 		}
 		// 3.2 探测响应头：大小 ≤ 上限 且 MIME 为图片（不下载内容）
-		if _, err := helper.ProbeImage(req.ImageURL, fetchOpt); err != nil {
+		if _, err := helper.ProbeImage(ctx, req.ImageURL, fetchOpt); err != nil {
 			return nil, model.NewBizError(err.Error())
 		}
 		// 3.3 下载图片原始字节（下载前再次头部校验，防 TOCTOU）
-		imgData, srcMIME, err := helper.FetchImage(req.ImageURL, fetchOpt)
+		imgData, srcMIME, err := helper.FetchImage(ctx, req.ImageURL, fetchOpt)
 		if err != nil {
 			return nil, model.NewBizError(err.Error())
 		}

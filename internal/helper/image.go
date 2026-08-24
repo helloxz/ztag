@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -35,10 +36,21 @@ var imageExtToMIME = map[string]string{
 }
 
 const (
-	maxRedirects = 5 // 图片下载最大重定向次数
-	acceptHeader = "image/webp,image/apng,image/*,*/*;q=0.8"
-	userAgent    = "ZTAG-ImageModeration/1.0"
+	maxRedirects    = 5 // 图片下载最大重定向次数
+	acceptHeader    = "image/webp,image/apng,image/*,*/*;q=0.8"
+	chromeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
+
+// originOf 提取 URL 的源（scheme://host），用作图片请求的 Referer 头。
+// 模拟浏览器「从图片自身域名发起请求」的行为，降低被图片源站反爬拦截的风险。
+// 例：https://s3.bmp.ovh/2026/08/23/ElpjG6BK.png → https://s3.bmp.ovh
+func originOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
 
 // ImageFetchOptions 图片探测/下载的参数。
 type ImageFetchOptions struct {
@@ -75,14 +87,19 @@ func IsInvalidURLError(err error) bool {
 //   - Content-Length 缺失或不大于 MaxBytes；
 //   - Content-Type 为图片 MIME（缺失时按 URL 后缀兜底）。
 //
+// 请求携带浏览器特征（Chrome UA、Accept、Referer=图片自身域名），降低被源站拦截风险。
 // 校验不通过返回描述性错误，由调用方统一转换为业务错误。
-func ProbeImage(raw string, opt ImageFetchOptions) (mimeType string, err error) {
+func ProbeImage(ctx context.Context, raw string, opt ImageFetchOptions) (mimeType string, err error) {
 	// SSRF 防护：初始请求 URL 同样校验（重定向目标由 CheckRedirect 兜底）
 	if err := checkURLAllowed(raw, opt.AllowPrivate); err != nil {
 		return "", err
 	}
 	client := newImageClient(opt)
-	resp, err := client.Get(raw)
+	req, err := newImageRequest(ctx, raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid image URL: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch image: %w", err)
 	}
@@ -95,13 +112,17 @@ func ProbeImage(raw string, opt ImageFetchOptions) (mimeType string, err error) 
 // 下载前会复用头部校验，防止「探测后内容被替换/放大」的 TOCTOU 风险；
 // 读取 body 时按 MaxBytes 硬性截断保护，杜绝响应头虚报大小。
 // 返回的原始字节交给 CompressImageForAI / EncodeDataURI 做本地预处理。
-func FetchImage(raw string, opt ImageFetchOptions) (data []byte, mimeType string, err error) {
+func FetchImage(ctx context.Context, raw string, opt ImageFetchOptions) (data []byte, mimeType string, err error) {
 	// SSRF 防护：初始请求 URL 同样校验（重定向目标由 CheckRedirect 兜底）
 	if err := checkURLAllowed(raw, opt.AllowPrivate); err != nil {
 		return nil, "", err
 	}
 	client := newImageClient(opt)
-	resp, err := client.Get(raw)
+	req, err := newImageRequest(ctx, raw)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid image URL: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch image: %w", err)
 	}
@@ -123,8 +144,26 @@ func FetchImage(raw string, opt ImageFetchOptions) (data []byte, mimeType string
 	return body, mimeType, nil
 }
 
+// newImageRequest 构造带浏览器特征的 GET 请求：
+//   - User-Agent：模拟 Chrome，降低被源站反爬拦截的概率；
+//   - Referer：取图片自身域名（scheme://host），模拟同源发起的图片请求；
+//   - Accept：限定图片类型。
+func newImageRequest(ctx context.Context, raw string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", chromeUserAgent)
+	req.Header.Set("Accept", acceptHeader)
+	if ref := originOf(raw); ref != "" {
+		req.Header.Set("Referer", ref)
+	}
+	return req, nil
+}
+
 // newImageClient 构造用于图片请求的 HTTP 客户端：
-// 限制单请求超时，并对每一跳重定向执行 SSRF 校验与次数上限。
+// 限制单请求超时，并对每一跳重定向执行 SSRF 校验与次数上限；
+// 重定向跳转时刷新浏览器特征头（Referer 取每一跳目标自身域名）。
 func newImageClient(opt ImageFetchOptions) *http.Client {
 	timeout := opt.Timeout
 	if timeout <= 0 {
@@ -137,7 +176,16 @@ func newImageClient(opt ImageFetchOptions) *http.Client {
 				return errors.New("too many redirects")
 			}
 			// 重定向目标同样校验，防止跳转到内网
-			return checkURLAllowed(req.URL.String(), opt.AllowPrivate)
+			if err := checkURLAllowed(req.URL.String(), opt.AllowPrivate); err != nil {
+				return err
+			}
+			// 刷新浏览器特征头：UA/Accept 保持 Chrome 特征，Referer 取当前目标自身域名
+			req.Header.Set("User-Agent", chromeUserAgent)
+			req.Header.Set("Accept", acceptHeader)
+			if ref := originOf(req.URL.String()); ref != "" {
+				req.Header.Set("Referer", ref)
+			}
+			return nil
 		},
 	}
 }
