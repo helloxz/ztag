@@ -73,8 +73,7 @@ models = [
 
 - 渠道 `id` 仅允许 `default` / `backup`（配置校验强制，default 必填、backup 可选）。
 - `type` 支持三种协议：`openai-chat`（OpenAI Chat Completions 兼容）、`openai-response`（OpenAI Responses 兼容）、`anthropic`（Anthropic Messages 兼容，含阿里云等兼容网关）。
-- 请求时可通过 `channel`（`"default"` / `"backup"`）与 `model` 字段指定渠道与模型；不指定则走 default 渠道的第一个模型，default 失败后自动切换 backup。
-
+- 请求时通过 `model="channel/modelId"`（如 `default/gpt-4o-mini`、`backup/claude-3-5-sonnet`）指定，未传则走 `default` 第一个；`load_balance=true` 时随机选 `default` 一个（与 `model` 互斥，`model` 优先）；`default`失败随机切 `backup`，`backup`失败再随机重试。
 ## 快速开始
 
 ```bash

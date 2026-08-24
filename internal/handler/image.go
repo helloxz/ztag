@@ -28,7 +28,7 @@ func NewImageHandler(svc *service.ImageService) *ImageHandler {
 //
 //	{ "image_url": "https://example.com/x.jpg" }
 //	或 { "image_base64": "<base64 内容>" }
-//	可选：{ "channel": "primary", "model": "gpt-4o-mini" }
+//	可选：{ "model": "default/gpt-4o-mini" } 或 { "load_balance": true }
 //
 // 响应为统一结构 { code, message, data }，data 为分析结果。
 func (h *ImageHandler) Analyze(c *gin.Context) {

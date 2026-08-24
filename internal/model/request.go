@@ -9,8 +9,8 @@ package model
 type AnalyzeRequest struct {
 	ImageURL    string `json:"image_url"`    // 图片 URL（与 ImageBase64 二选一）
 	ImageBase64 string `json:"image_base64"` // 图片 base64 内容（与 ImageURL 二选一）
-	Channel     string `json:"channel"`      // 可选：指定渠道 id（"default" / "backup"），为空用 default
-	Model       string `json:"model"`        // 可选：指定渠道下的模型名，为空则由网关选择
+	Model       string `json:"model"`        // 可选：格式为 "channel/modelId"（如 "default/gpt-4o-mini"），channel 仅允许 default/backup，modelId 可含斜杠；为空则由网关按负载均衡决定
+	LoadBalance bool   `json:"load_balance"` // 可选：仅当 Model 为空时生效，true 表示从 default 渠道中随机选择一个模型；与 Model 互斥，Model 优先
 
 	// 内部字段：由 service 层在下载/校验后填充，AI 网关据此构造图片消息，不参与对外 JSON
 	ImageDataURI string `json:"-"` // 图片 base64 data URI（data:image/xxx;base64,...）
