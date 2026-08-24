@@ -1,7 +1,6 @@
 package helper
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -92,37 +91,36 @@ func ProbeImage(raw string, opt ImageFetchOptions) (mimeType string, err error) 
 	return validateImageResponse(resp, raw, opt.MaxBytes)
 }
 
-// FetchImageAsDataURI 下载图片并转换为 data URI（如 data:image/jpeg;base64,...）。
+// FetchImage 下载图片并返回原始字节与 MIME 类型。
 // 下载前会复用头部校验，防止「探测后内容被替换/放大」的 TOCTOU 风险；
 // 读取 body 时按 MaxBytes 硬性截断保护，杜绝响应头虚报大小。
-func FetchImageAsDataURI(raw string, opt ImageFetchOptions) (dataURI string, mimeType string, err error) {
+// 返回的原始字节交给 CompressImageForAI / EncodeDataURI 做本地预处理。
+func FetchImage(raw string, opt ImageFetchOptions) (data []byte, mimeType string, err error) {
 	// SSRF 防护：初始请求 URL 同样校验（重定向目标由 CheckRedirect 兜底）
 	if err := checkURLAllowed(raw, opt.AllowPrivate); err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 	client := newImageClient(opt)
 	resp, err := client.Get(raw)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to fetch image: %w", err)
+		return nil, "", fmt.Errorf("failed to fetch image: %w", err)
 	}
 	defer resp.Body.Close()
 
 	mimeType, err = validateImageResponse(resp, raw, opt.MaxBytes)
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 
 	// 限制读取：超过 MaxBytes+1 字节即判定超限（防响应头虚报）
 	body, err := io.ReadAll(io.LimitReader(resp.Body, opt.MaxBytes+1))
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read image body: %w", err)
+		return nil, "", fmt.Errorf("failed to read image body: %w", err)
 	}
 	if int64(len(body)) > opt.MaxBytes {
-		return "", "", fmt.Errorf("image too large (exceeds %d bytes)", opt.MaxBytes)
+		return nil, "", fmt.Errorf("image too large (exceeds %d bytes)", opt.MaxBytes)
 	}
-
-	encoded := base64.StdEncoding.EncodeToString(body)
-	return "data:" + mimeType + ";base64," + encoded, mimeType, nil
+	return body, mimeType, nil
 }
 
 // newImageClient 构造用于图片请求的 HTTP 客户端：

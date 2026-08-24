@@ -117,6 +117,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
       "risk_level": "low",
       "risk_reason": "未检测到敏感内容。"
     },
+    "model_id": "gpt-4o-mini",
     "elapsed_ms": 126
   }
 }
@@ -126,16 +127,19 @@ curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
 - `classification.category`：图片类型，固定枚举 `normal | porn | suggestive | gore | violence | politics | gambling | drugs | terror | other_risk`（英文枚举值，不做翻译）
 - `classification.score`：该图片类型的匹配分数（0.0 ~ 1.0）
 - `classification.risk_level`：综合风险 `low | medium | high`；`risk_reason`：判定依据概述（中文，人工复审用）
-- `elapsed_ms`：本次请求处理总耗时（毫秒，含图片下载与 AI 调用）
+- `model_id`：实际处理该图的大模型标识（含主备切换后的真实模型）；`elapsed_ms`：本次请求处理总耗时（毫秒，含图片下载与 AI 调用）
 
-### 图片校验策略（POST /api/v1/image/analyze）
+### 图片校验与预处理策略（POST /api/v1/image/analyze）
 
 请求经 `image_url`（或 `image_base64`）提交图片，后端对 URL 图片执行：
 
 1. **URL 格式校验**：必须为 http/https 且带主机名；
 2. **响应头校验**（GET 响应头，不下载内容）：`Content-Length` 存在且 ≤ `ai.max_image_bytes`（默认 10MB）；`Content-Type` 必须为图片 MIME（缺失时按 URL 后缀兜底，如 `.png`）；
 3. **SSRF 防护**：默认拦截内网/保留地址（`ai.allow_private_urls = true` 可放行，仅本地联调用）；
-4. **传给 AI**：校验通过后下载图片转为 base64 data URI 送大模型分析。
+4. **webp 压缩**：下载后对 `image/jpeg`、`image/png`、`image/bmp` 统一转为 webp（quality 80，基于 libvips/bimg）以减小请求体积；**其余格式（如 gif）原样透传**；压缩失败自动回退原图，不阻断审核；
+5. **传给 AI**：预处理完成（含 webp 转换）后以 base64 data URI 送大模型分析。
+
+> 说明：webp 压缩降低的是传输体积；token 消耗主要取决于图片像素尺寸（当前按配置不限制像素）。
 
 ## 中间件说明
 

@@ -22,6 +22,7 @@ type AnalyzeResult struct {
 	Keywords       []string       `json:"keywords"`       // 图片 SEO 关键词（3-5 个，中文）
 	Description    string         `json:"description"`    // 图片 SEO 描述（不超过 150 字，中文）
 	Classification Classification `json:"classification"` // 图片分类明细
+	ModelID        string         `json:"model_id"`       // 实际处理该图的大模型标识（由 AI 网关填充）
 	ElapsedMs      int64          `json:"elapsed_ms"`     // 请求处理总耗时（毫秒），由 handler 层在响应前填充
 	Raw            interface{}    `json:"-"`              // 原始模型输出（调试用，不回传给客户端）
 }

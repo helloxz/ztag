@@ -26,5 +26,6 @@ func (m *MockAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 			RiskLevel:  "low",
 			RiskReason: "未检测到敏感内容。",
 		},
+		ModelID: m.modelName,
 	}, nil
 }

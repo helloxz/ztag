@@ -112,7 +112,12 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 		return nil, fmt.Errorf("AI analysis failed: %w", err)
 	}
 
-	return toAnalyzeResult(&result.Object), nil
+	out := toAnalyzeResult(&result.Object)
+	// 模型 ID：优先取真实响应中的模型标识（最准确），为空则用配置的模型名兜底
+	if out.ModelID = result.Response.Model; out.ModelID == "" {
+		out.ModelID = a.modelName
+	}
+	return out, nil
 }
 
 // toAnalyzeResult 将模型结构化输出映射为对外领域模型，并对分类做白名单归一化。

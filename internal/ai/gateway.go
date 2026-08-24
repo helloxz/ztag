@@ -10,6 +10,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/helloxz/ztag/internal/config"
@@ -71,17 +72,25 @@ func (g *Gateway) Analyze(ctx context.Context, req *model.AnalyzeRequest) (*mode
 	if err == nil {
 		return result, nil
 	}
+	// 记录主渠道失败原因（后续可能降级成功，故用 Warn 级别）
+	slog.Warn("AI request failed on primary channel",
+		"channel", tgt.channel.ID, "model", tgt.model, "err", err)
 
 	// 2. 失败切换：仅当默认渠道失败且存在备用渠道时兜底一次
 	if tgt.channel.ID == config.ChannelIDDefault && g.backupCh != nil {
 		backupTarget := &target{channel: g.backupCh, model: g.backupCh.Models[0]}
 		if result, backupErr := g.invoke(ctx, req, backupTarget); backupErr == nil {
 			return result, nil
+		} else {
+			// 备用渠道也失败：全部失败，按 Error 级别记录
+			slog.Error("AI request failed on backup channel",
+				"channel", g.backupCh.ID, "model", g.backupCh.Models[0], "err", backupErr)
 		}
 		return nil, model.NewBizError("AI analysis failed on both channels")
 	}
 
 	// 3. 无备用渠道可切，直接返回失败（err 已含 AI analysis failed 前缀）
+	slog.Error("AI request failed", "channel", tgt.channel.ID, "model", tgt.model, "err", err)
 	return nil, model.NewBizError(err.Error())
 }
 

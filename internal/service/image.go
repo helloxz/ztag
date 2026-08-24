@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/helloxz/ztag/internal/ai"
@@ -25,7 +26,7 @@ func NewImageService(gateway *ai.Gateway, cfg config.AIConfig) *ImageService {
 
 // AnalyzeImage 编排一次图片分析请求，完整链路：
 //
-//	URL 格式校验 → header 探测校验（大小/MIME）→ 下载转 base64 → AI 网关分析
+//	URL 格式校验 → header 探测校验（大小/MIME）→ 下载 → 压缩转换 webp → base64 → AI 网关分析
 func (s *ImageService) AnalyzeImage(ctx context.Context, req *model.AnalyzeRequest) (*model.AnalyzeResult, error) {
 	// 1. 输入校验：图片 URL 与 base64 二选一
 	if req.ImageURL == "" && req.ImageBase64 == "" {
@@ -50,13 +51,24 @@ func (s *ImageService) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 		if _, err := helper.ProbeImage(req.ImageURL, fetchOpt); err != nil {
 			return nil, model.NewBizError(err.Error())
 		}
-		// 3.3 下载图片并转为 base64 data URI（下载前再次头部校验，防 TOCTOU）
-		dataURI, mimeType, err := helper.FetchImageAsDataURI(req.ImageURL, fetchOpt)
+		// 3.3 下载图片原始字节（下载前再次头部校验，防 TOCTOU）
+		imgData, srcMIME, err := helper.FetchImage(req.ImageURL, fetchOpt)
 		if err != nil {
 			return nil, model.NewBizError(err.Error())
 		}
-		req.ImageDataURI = dataURI
-		req.ImageMIME = mimeType
+		// 3.4 压缩转换：jpg/png/bmp → webp（其余原样）；压缩失败回退原图，不阻断主流程
+		prepared, outMIME, err := helper.CompressImageForAI(imgData, srcMIME)
+		if err != nil {
+			slog.Warn("image compression failed, fallback to original",
+				"src_mime", srcMIME, "err", err)
+			prepared, outMIME = imgData, srcMIME
+		} else {
+			slog.Info("image prepared for AI",
+				"src_mime", srcMIME, "mime", outMIME,
+				"original_bytes", len(imgData), "prepared_bytes", len(prepared))
+		}
+		req.ImageDataURI = helper.EncodeDataURI(prepared, outMIME)
+		req.ImageMIME = outMIME
 
 	case req.ImageBase64 != "":
 		// base64 直传：补全 data URI（暂不校验大小，后续可加）
