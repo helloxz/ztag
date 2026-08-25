@@ -31,7 +31,8 @@ apt-get install -y --no-install-recommends \
   libvips \
   ca-certificates \
   curl \
-  tar
+  tar \
+  file
 # 清理 apt 缓存减小镜像体积
 rm -rf /var/lib/apt/lists/*
 
@@ -85,8 +86,7 @@ tar -xzf "/tmp/${PKG}" -C "${WORKDIR}"
 # release 包内为单文件 ztag
 chmod +x "${WORKDIR}/ztag"
 ls -lh "${WORKDIR}/ztag"
-file "${WORKDIR}/ztag" || true
-
+file "${WORKDIR}/ztag" 2>&1 | head -n 2 || true
 # 冒烟：验证二进制可执行（仅当前架构可运行）
 if "${WORKDIR}/ztag" --version 2>&1 | head -n5; then
   echo ">>> Binary version check passed"
@@ -94,11 +94,13 @@ else
   echo ">>> Warning: binary version check failed (may be cross-arch build)" >&2
 fi
 
-# 校验 libvips 动态链接是否满足（upx 压缩后 ldd 仍应能解析）
-if ldd "${WORKDIR}/ztag" 2>&1 | grep -q "not found"; then
-  echo ">>> ERROR: missing shared libraries:" >&2
-  ldd "${WORKDIR}/ztag" || true
-  exit 1
+# upx 压缩的二进制 ldd 会显示 not a dynamic executable，属正常，跳过错误提示
+if file "${WORKDIR}/ztag" 2>&1 | grep -q "dynamically linked"; then
+  if ldd "${WORKDIR}/ztag" 2>&1 | grep -q "not found"; then
+    echo ">>> ERROR: missing shared libraries:" >&2
+    ldd "${WORKDIR}/ztag" || true
+    exit 1
+  fi
 fi
 
 # 清理临时文件

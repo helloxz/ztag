@@ -5,33 +5,34 @@
 # ============================================================
 FROM debian:12-slim
 
-# 镜像元信息
 LABEL maintainer="helloxz/ztag" \
       description="ztag - Image content recognition API (libvips + bimg)"
 
-# 工作目录（要求 /app）
 WORKDIR /app
 
-# 复制安装脚本（安装 libvips 等运行时依赖 + 下载最新 release）
+# 1. 安装脚本：负责 apt 安装 libvips 等依赖 + 拉取最新 release
 COPY scripts/docker-install.sh /tmp/docker-install.sh
 
-# 多架构支持：Docker buildx 会自动注入 TARGETARCH (amd64/arm64)
 ARG TARGETARCH
 
-# 执行安装脚本并清理
 RUN chmod +x /tmp/docker-install.sh \
     && /tmp/docker-install.sh "${TARGETARCH}" \
     && rm -f /tmp/docker-install.sh
 
-# 暴露端口（与 data/config.toml 中 server.addr=:18080 一致）
+# 2. 入口脚本：兼容历史版本 :8080 -> :18080 的自动迁移
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# 3. 预置正确端口的配置模板（供空卷挂载时 seeding，以及镜像默认配置）
+#    data/config.toml 当前模板为 :18080，v0.1.0 二进制内嵌为 :8080，此处覆盖确保一致
+COPY data/config.toml /app/data/config.toml
+RUN cp /app/data/config.toml /app/data/.config.template.toml
+
 EXPOSE 18080
 
-# 数据持久化目录（配置 data/config.toml、日志 data/logs/）
 VOLUME ["/app/data"]
 
-# 健康检查：依赖 /healthz 探活接口（不鉴权）
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -fsS http://127.0.0.1:18080/healthz || exit 1
 
-# 默认启动命令；支持通过 docker run 追加参数透传（如 -config）
-ENTRYPOINT ["/app/ztag"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
