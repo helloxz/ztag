@@ -7,11 +7,11 @@
 # ============================================================
 
 [server]
-addr = ":8080"          # HTTP 监听地址
-mode = "debug"          # gin 运行模式：debug | release
+addr = ":18080"          # HTTP 监听地址
+mode = "release"          # gin 运行模式：debug | release
 
 [log]
-level = "info"          # 日志级别：debug | info | warn | error
+level = "warn"          # 日志级别：debug | info | warn | error
 
 [auth]
 enabled = false         # 是否开启对外 API 鉴权（建议生产开启）
