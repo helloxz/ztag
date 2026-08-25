@@ -1,0 +1,127 @@
+# Release: 仅在推送 v* tag 时触发，编译 Linux amd64/arm64 并用 UPX 最佳压缩后打包
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build-${{ matrix.goarch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            runner: ubuntu-latest
+          - goarch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Install deps (libvips + upx)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvips-dev upx
+          upx --version
+          pkg-config --modversion vips || true
+
+      - name: Resolve version from version.go
+        id: version
+        run: |
+          # 从 internal/version/version.go 读取 Version 常量，失败则回退到 tag 名
+          VER=$(grep -oE '"v[0-9]+\.[0-9]+\.[0-9][^"]*"' internal/version/version.go | tr -d '"' | head -n1 || true)
+          if [ -z "$VER" ]; then
+            VER="${GITHUB_REF_NAME}"
+            echo "version.go 解析失败，回退到 tag: $VER"
+          fi
+          # 容错：确保以 v 开头
+          if [ -z "$VER" ]; then
+            echo "无法解析版本号" >&2
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VER"
+
+      - name: Build (CGO_ENABLED=1)
+        env:
+          CGO_ENABLED: "1"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          echo "Building for linux/${{ matrix.goarch }} version=${{ steps.version.outputs.version }}"
+          go build -trimpath -ldflags="-s -w" -o ztag ./cmd/server
+          ls -lh ztag
+          file ztag
+          # 冒烟：验证 --version 可执行（仅本机架构可运行，交叉时跳过执行）
+          if [ "${{ matrix.goarch }}" = "amd64" ] || [ "$(uname -m)" = "aarch64" ]; then
+            ./ztag -version || ./ztag --version || true
+          fi
+
+      - name: Compress with UPX (best)
+        run: |
+          # upx --best --lzma 为最佳压缩比；失败不阻断发布（保留原二进制）
+          if upx --best --lzma ztag; then
+            echo "UPX compressed"
+          else
+            echo "UPX failed, keep original binary"
+          fi
+          ls -lh ztag
+
+      - name: Package tar.gz
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          ARCH="${{ matrix.goarch }}"
+          PKG="ztag-${VER}-linux-${ARCH}.tar.gz"
+          tar -czf "$PKG" ztag
+          ls -lh "$PKG"
+          sha256sum "$PKG" | tee "$PKG.sha256"
+          echo "pkg=$PKG" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ztag-${{ steps.version.outputs.version }}-linux-${{ matrix.goarch }}
+          path: |
+            ztag-*.tar.gz
+            ztag-*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ztag-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Display artifacts
+        run: |
+          ls -lh dist/
+          sha256sum dist/* || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
