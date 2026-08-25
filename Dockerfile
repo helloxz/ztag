@@ -26,8 +26,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # 3. 预置正确端口的配置模板（供空卷挂载时 seeding，以及镜像默认配置）
 #    data/config.toml 当前模板为 :18080，v0.1.0 二进制内嵌为 :8080，此处覆盖确保一致
 COPY data/config.toml /app/data/config.toml
-RUN cp /app/data/config.toml /app/data/.config.template.toml
-
+RUN mkdir -p /usr/local/share/ztag && cp /app/data/config.toml /usr/local/share/ztag/config.toml.template
 EXPOSE 18080
 
 VOLUME ["/app/data"]
