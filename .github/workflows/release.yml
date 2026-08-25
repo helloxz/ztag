@@ -31,12 +31,11 @@ jobs:
           go-version: "1.25"
           cache: true
 
-      - name: Install deps (libvips + upx)
+      - name: Install tooling (upx)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvips-dev upx
+          sudo apt-get install -y upx
           upx --version
-          pkg-config --modversion vips || true
 
       - name: Resolve version from version.go
         id: version
@@ -55,9 +54,9 @@ jobs:
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VER"
 
-      - name: Build (CGO_ENABLED=1)
+      - name: Build (CGO_ENABLED=0)
         env:
-          CGO_ENABLED: "1"
+          CGO_ENABLED: "0"
           GOOS: linux
           GOARCH: ${{ matrix.goarch }}
         run: |

@@ -3,6 +3,9 @@
 package router
 
 import (
+	"net/http"
+	_ "net/http/pprof" // 注册 pprof handler 到 http.DefaultServeMux（仅 debug 模式挂载使用）
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/helloxz/ztag/internal/config"
@@ -34,6 +37,14 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 
 	// 健康检查探活接口：不鉴权、不限流
 	r.GET("/healthz", hs.Health.Healthz)
+
+	// 仅 debug 模式挂载 pprof 监控端点（heap/goroutine/profile 等），release 不暴露。
+	// 复用 Auth 中间件，防止误配 debug 上线时 pprof 未鉴权裸奔。
+	if cfg.Server.Mode == "debug" {
+		pprofGroup := r.Group("/debug/pprof", middleware.Auth(cfg.Auth))
+		pprofGroup.GET("", gin.WrapH(http.DefaultServeMux))
+		pprofGroup.GET("/*any", gin.WrapH(http.DefaultServeMux))
+	}
 
 	// ============ 对外 API v1 分组 ============
 	v1 := r.Group("/api/v1",

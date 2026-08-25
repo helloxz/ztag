@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,12 +15,15 @@ import (
 
 // ImageHandler 图片分析相关接口的处理器。
 type ImageHandler struct {
-	svc *service.ImageService
+	svc            *service.ImageService
+	maxRequestBody int64 // 请求体大小上限（字节）；0 表示不限制
 }
 
 // NewImageHandler 构建图片分析处理器。
-func NewImageHandler(svc *service.ImageService) *ImageHandler {
-	return &ImageHandler{svc: svc}
+// maxRequestBody 为请求体字节上限（须覆盖 base64 编码膨胀与 JSON 包装），
+// 用于在读取阶段源头拦截超大请求体，避免超大负载全量进内存。
+func NewImageHandler(svc *service.ImageService, maxRequestBody int64) *ImageHandler {
+	return &ImageHandler{svc: svc, maxRequestBody: maxRequestBody}
 }
 
 // Analyze 处理 POST /api/v1/image/analyze。
@@ -36,6 +40,11 @@ func (h *ImageHandler) Analyze(c *gin.Context) {
 	start := time.Now()
 
 	var req model.AnalyzeRequest
+	// 源头拦截超大请求体：在读取阶段即掐断（超限返回 "http: request body too large"），
+	// 防止超大 base64 负载全量进入内存后再被业务层拒绝
+	if h.maxRequestBody > 0 {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, h.maxRequestBody)
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		helper.Fail(c, "invalid request body: "+err.Error())
 		return

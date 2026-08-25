@@ -23,12 +23,11 @@ case "$ARCH" in
   *) echo "unsupported arch: $ARCH (only amd64/arm64)" >&2; exit 1 ;;
 esac
 
-echo ">>> Install runtime dependencies (libvips)..."
+echo ">>> Install runtime tools..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-# --no-install-recommends 减小体积；libvips 为 bimg 运行时必需，ca-certificates+curl+tar 为下载必需
+# --no-install-recommends 减小体积；纯 Go 静态二进制无动态库依赖，仅需下载/校验/探测工具
 apt-get install -y --no-install-recommends \
-  libvips \
   ca-certificates \
   curl \
   tar \

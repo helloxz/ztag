@@ -72,16 +72,21 @@ func main() {
 	gateway := ai.NewGateway(cfg.AI)
 	imageSvc := service.NewImageService(gateway, cfg.AI)
 
+	// 请求体上限：base64 编码膨胀约 4/3，另留 JSON 外壳与 data URI 前缀余量
+	const maxRequestBodyExtra = 64 * 1024
+	maxRequestBody := cfg.AI.MaxImageBytes*4/3 + maxRequestBodyExtra
+
 	hs := &router.Handlers{
 		Health: handler.NewHealthHandler(),
-		Image:  handler.NewImageHandler(imageSvc),
+		Image:  handler.NewImageHandler(imageSvc, maxRequestBody),
 	}
 
 	// ---------- 4. 构建路由并启动 HTTP 服务 ----------
 	engine := router.SetupRouter(cfg, hs)
 	srv := &http.Server{
-		Addr:    cfg.Server.Addr,
-		Handler: engine,
+		Addr:              cfg.Server.Addr,
+		Handler:           engine,
+		ReadHeaderTimeout: 5 * time.Second, // 防慢连接/僵尸连接堆积 goroutine 与缓冲（请求体读取与 AI 调用时长不受限）
 	}
 
 	go func() {

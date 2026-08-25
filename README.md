@@ -137,10 +137,10 @@ curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
 1. **URL 格式校验**：必须为 http/https 且带主机名；
 2. **响应头校验**（GET 响应头，不下载内容）：`Content-Length` 存在且 ≤ `ai.max_image_bytes`（默认 10MB）；`Content-Type` 必须为图片 MIME（缺失时按 URL 后缀兜底，如 `.png`）；
 3. **SSRF 防护**：默认拦截内网/保留地址（`ai.allow_private_urls = true` 可放行，仅本地联调用）；
-4. **webp 压缩**：下载后对 `image/jpeg`、`image/png`、`image/bmp` 统一转为 webp（quality 80，基于 libvips/bimg）以减小请求体积；**其余格式（如 gif）原样透传**；压缩失败自动回退原图，不阻断审核；
+4. **图片压缩**：下载后对 `image/jpeg`、`image/png`、`image/bmp` 解码并按需等比缩放（最长边超过 2048px 时缩小，宽高比不变），统一编码为 webp（quality 80）；静态 webp 输入同样等比缩放后重编码（动画 webp、gif、avif 原样透传）；处理失败自动回退原图，不阻断审核。图片处理链路为纯 Go 实现（[imaging](https://github.com/disintegration/imaging) 缩放 + [deepteams/webp](https://github.com/deepteams/webp) 编码），无 cgo/libvips 依赖；
 5. **传给 AI**：预处理完成（含 webp 转换）后以 base64 data URI 送大模型分析。
 
-> 说明：webp 压缩降低的是传输体积；token 消耗主要取决于图片像素尺寸（当前按配置不限制像素）。
+> 说明：webp 压缩降低的是传输体积；token 消耗主要取决于图片像素尺寸——预处理已将最长边限制在 2048px 以内（另设 4000 万总像素上限防解压炸弹），从源头控制了 token 与内存开销。
 
 ## 中间件说明
 

@@ -1,0 +1,11 @@
+services:
+  ztag:
+    image: helloz/ztag
+    container_name: ztag
+    restart: unless-stopped
+    ports:
+      - "18080:18080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai

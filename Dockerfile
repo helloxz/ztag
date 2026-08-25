@@ -6,11 +6,11 @@
 FROM debian:12-slim
 
 LABEL maintainer="helloxz/ztag" \
-      description="ztag - Image content recognition API (libvips + bimg)"
+      description="ztag - Image content recognition API (pure Go)"
 
 WORKDIR /app
 
-# 1. 安装脚本：负责 apt 安装 libvips 等依赖 + 拉取最新 release
+# 1. 安装脚本：负责安装运行时工具（curl/tar/file）并拉取最新 release
 COPY scripts/docker-install.sh /tmp/docker-install.sh
 
 ARG TARGETARCH
