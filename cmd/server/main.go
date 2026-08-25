@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ import (
 	"github.com/helloxz/ztag/internal/ai"
 	"github.com/helloxz/ztag/internal/config"
 	"github.com/helloxz/ztag/internal/handler"
+	"github.com/helloxz/ztag/internal/logger"
 	"github.com/helloxz/ztag/internal/router"
 	"github.com/helloxz/ztag/internal/service"
 	"github.com/helloxz/ztag/internal/version"
@@ -57,6 +59,14 @@ func main() {
 		log.Fatalf("[startup failed] load config: %v", err)
 	}
 
+	// ---------- 2.1 初始化日志：Warn/Error 落盘到 data/logs/error-YYYY-MM-DD.log ----------
+	if err := logger.Init(logger.DefaultLogDir, cfg.Log.Level); err != nil {
+		// 日志初始化失败不阻断启动，退化为终端输出
+		log.Printf("[warn] init logger failed: %v", err)
+	} else {
+		slog.Info("logger initialized", "dir", logger.DefaultLogDir, "level", cfg.Log.Level, "retain_days", logger.RetainDays)
+	}
+
 	// ---------- 3. 构建核心依赖（由下至上） ----------
 	// AI 多渠道网关 → 图片业务服务 → 各 handler
 	gateway := ai.NewGateway(cfg.AI)
@@ -75,22 +85,22 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("ZTAG server started, listening on %s", cfg.Server.Addr)
+		slog.Info("ZTAG server started", "addr", cfg.Server.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("[startup failed] HTTP server: %v", err)
+			slog.Error("[startup failed] HTTP server", "err", err)
+			os.Exit(1)
 		}
 	}()
-
 	// ---------- 5. 等待退出信号，优雅关闭 ----------
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("shutdown signal received, closing server...")
+	slog.Info("shutdown signal received, closing server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("[exit] server shutdown error: %v", err)
+		slog.Error("[exit] server shutdown error", "err", err)
 	}
-	log.Println("server exited")
+	slog.Info("server exited")
 }
