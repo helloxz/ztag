@@ -66,9 +66,19 @@ func (s *ImageService) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 	}
 
 	// 2. 构造图片抓取参数（下载超时与 AI 超时分离，缺省/非法回退 30s）
+	//    Header 探测超时 = 下载超时 -20s，兜底不低于 10s（按用户方案）
 	imageTimeout := time.Duration(s.cfg.ImageTimeout) * time.Second
 	if imageTimeout <= 0 {
 		imageTimeout = 30 * time.Second
+	}
+	probeTimeout := imageTimeout - 20*time.Second
+	if probeTimeout < 10*time.Second {
+		probeTimeout = 10 * time.Second
+	}
+	probeOpt := helper.ImageFetchOptions{
+		MaxBytes:     s.cfg.MaxImageBytes,
+		AllowPrivate: s.cfg.AllowPrivateURLs,
+		Timeout:      probeTimeout,
 	}
 	fetchOpt := helper.ImageFetchOptions{
 		MaxBytes:     s.cfg.MaxImageBytes,
@@ -84,9 +94,9 @@ func (s *ImageService) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 			return nil, model.NewBizError(err.Error())
 		}
 		// 3.2 探测响应头：大小 ≤ 上限 且 MIME 为图片（不下载内容）
-		if _, err := helper.ProbeImage(ctx, req.ImageURL, fetchOpt); err != nil {
+		if _, err := helper.ProbeImage(ctx, req.ImageURL, probeOpt); err != nil {
 			slog.Warn("probe image failed",
-				"url", req.ImageURL, "image_timeout", imageTimeout.String(), "err", err)
+				"url", req.ImageURL, "probe_timeout", probeTimeout.String(), "image_timeout", imageTimeout.String(), "err", err)
 			return nil, model.NewBizError(err.Error())
 		}
 		// 3.3 下载图片原始字节（下载前再次头部校验，防 TOCTOU）
