@@ -49,6 +49,7 @@ type AuthConfig struct {
 // 其中 default 必填，backup 可选。
 type AIConfig struct {
 	Timeout                  int             `mapstructure:"timeout"`                    // 单次 AI 调用超时（秒）
+	ImageTimeout             int             `mapstructure:"image_timeout"`              // 图片下载超时（秒），缺省/非法时回退 30s
 	MaxRetries               int             `mapstructure:"max_retries"`                // 单渠道内失败重试次数
 	Mock                     bool            `mapstructure:"mock"`                       // 是否启用模拟 AI（本地无 API Key 联调用）
 	MaxImageBytes            int64           `mapstructure:"max_image_bytes"`            // 图片大小上限（字节），默认 10MB
@@ -135,6 +136,7 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("server.workers", 4)
 	v.SetDefault("log.level", "info")
 	v.SetDefault("ai.timeout", 60)
+	v.SetDefault("ai.image_timeout", 30)
 	v.SetDefault("ai.max_retries", 2)
 	v.SetDefault("ai.max_image_bytes", DefaultMaxImageBytes)
 	v.SetDefault("ai.temperature", 0.2)
@@ -148,6 +150,11 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file %s: %w", path, err)
+	}
+
+	// 图片下载超时与 AI 超时分离：未配置/非法值回退 30s，不干扰 AI 超时
+	if cfg.AI.ImageTimeout <= 0 {
+		cfg.AI.ImageTimeout = 30
 	}
 
 	if err := cfg.validate(); err != nil {

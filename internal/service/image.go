@@ -65,11 +65,15 @@ func (s *ImageService) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 		return nil, model.NewBizError("image_url or image_base64 must be provided")
 	}
 
-	// 2. 构造图片抓取参数
+	// 2. 构造图片抓取参数（下载超时与 AI 超时分离，缺省/非法回退 30s）
+	imageTimeout := time.Duration(s.cfg.ImageTimeout) * time.Second
+	if imageTimeout <= 0 {
+		imageTimeout = 30 * time.Second
+	}
 	fetchOpt := helper.ImageFetchOptions{
 		MaxBytes:     s.cfg.MaxImageBytes,
 		AllowPrivate: s.cfg.AllowPrivateURLs,
-		Timeout:      time.Duration(s.cfg.Timeout) * time.Second, // 与 AI 调用同源超时，避免慢源图片拖垮请求
+		Timeout:      imageTimeout,
 	}
 
 	// 3. 图片来源处理：URL 或 base64 → 统一为 data URI 供 AI 网关使用
@@ -81,22 +85,26 @@ func (s *ImageService) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 		}
 		// 3.2 探测响应头：大小 ≤ 上限 且 MIME 为图片（不下载内容）
 		if _, err := helper.ProbeImage(ctx, req.ImageURL, fetchOpt); err != nil {
+			slog.Warn("probe image failed",
+				"url", req.ImageURL, "image_timeout", imageTimeout.String(), "err", err)
 			return nil, model.NewBizError(err.Error())
 		}
 		// 3.3 下载图片原始字节（下载前再次头部校验，防 TOCTOU）
 		imgData, srcMIME, err := helper.FetchImage(ctx, req.ImageURL, fetchOpt)
 		if err != nil {
+			slog.Warn("fetch image failed",
+				"url", req.ImageURL, "image_timeout", imageTimeout.String(), "err", err)
 			return nil, model.NewBizError(err.Error())
 		}
 		// 3.4 压缩转换：jpg/png/bmp → webp（其余原样）；压缩失败回退原图，不阻断主流程
 		prepared, outMIME, err := helper.CompressImageForAI(imgData, srcMIME)
 		if err != nil {
 			slog.Warn("image compression failed, fallback to original",
-				"src_mime", srcMIME, "err", err)
+				"url", req.ImageURL, "src_mime", srcMIME, "err", err)
 			prepared, outMIME = imgData, srcMIME
 		} else {
 			slog.Info("image prepared for AI",
-				"src_mime", srcMIME, "mime", outMIME,
+				"url", req.ImageURL, "src_mime", srcMIME, "mime", outMIME,
 				"original_bytes", len(imgData), "prepared_bytes", len(prepared))
 		}
 		req.ImageDataURI = helper.EncodeDataURI(prepared, outMIME)
@@ -123,15 +131,13 @@ func (s *ImageService) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 				srcMIME = "image/png" // 未知格式兜底（保持旧行为）
 			}
 			slog.Warn("image compression failed, fallback to original",
-				"src_mime", srcMIME, "err", err)
+				"source", "base64", "src_mime", srcMIME, "err", err)
 			prepared, outMIME = raw, srcMIME
 		} else {
 			slog.Info("image prepared for AI",
-				"src_mime", srcMIME, "mime", outMIME,
+				"source", "base64", "src_mime", srcMIME, "mime", outMIME,
 				"original_bytes", len(raw), "prepared_bytes", len(prepared))
 		}
-		req.ImageDataURI = helper.EncodeDataURI(prepared, outMIME)
-		req.ImageMIME = outMIME
 	}
 
 	// 4. 调用 AI 网关分析（含主备切换）
