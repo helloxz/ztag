@@ -28,8 +28,9 @@ type Config struct {
 
 // ServerConfig HTTP 服务配置。
 type ServerConfig struct {
-	Addr string `mapstructure:"addr"` // HTTP 监听地址，如 ":8080"
-	Mode string `mapstructure:"mode"` // gin 运行模式：debug | release
+	Addr    string `mapstructure:"addr"`    // HTTP 监听地址，如 ":8080"
+	Mode    string `mapstructure:"mode"`    // gin 运行模式：debug | release
+	Workers int    `mapstructure:"workers"` // 并发工作者数（同时进行的重内存分析任务数），未配置默认 4，最小 1
 }
 
 // LogConfig 日志配置。
@@ -131,6 +132,7 @@ func Load(path string) (*Config, error) {
 	// 设置默认值（配置文件中缺失的键使用这些值）
 	v.SetDefault("server.addr", ":8080")
 	v.SetDefault("server.mode", "debug")
+	v.SetDefault("server.workers", 4)
 	v.SetDefault("log.level", "info")
 	v.SetDefault("ai.timeout", 60)
 	v.SetDefault("ai.max_retries", 2)

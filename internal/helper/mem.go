@@ -12,13 +12,7 @@ import (
 // 回退到宿主机物理内存或保守兜底。
 const noMemoryLimitThreshold int64 = 1 << 40 // 1TB
 
-// MemoryLimitBytes 返回进程可用的内存上限（字节），用于容量相关的动态决策（如并发数）：
-//  1. 优先读 cgroup v2 的 memory.max（容器场景）；
-//  2. 其次读 cgroup v1 的 memory.limit_in_bytes；
-//  3. 检测到处于容器内但 cgroup 限制读不到（非标准挂载布局）→ 返回 0（保守兜底）；
-//  4. 非容器（裸机）→ 回退宿主机物理内存 /proc/meminfo 的 MemTotal。
-//
-// 返回 0 时调用方应按最保守策略处理（见 service.concurrencyLimitByMemory）。
+// 返回 0 时调用方应按最保守策略处理（如 service.effectiveWorkers 钳位为 1）。
 func MemoryLimitBytes() int64 {
 	if v := readCgroupV2(); v > 0 {
 		return v

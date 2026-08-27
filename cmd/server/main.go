@@ -70,7 +70,7 @@ func main() {
 	// ---------- 3. 构建核心依赖（由下至上） ----------
 	// AI 多渠道网关 → 图片业务服务 → 各 handler
 	gateway := ai.NewGateway(cfg.AI)
-	imageSvc := service.NewImageService(gateway, cfg.AI)
+	imageSvc := service.NewImageService(gateway, cfg.AI, cfg.Server.Workers)
 
 	// 请求体上限：base64 编码膨胀约 4/3，另留 JSON 外壳与 data URI 前缀余量
 	const maxRequestBodyExtra = 64 * 1024

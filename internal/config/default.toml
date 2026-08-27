@@ -9,7 +9,7 @@
 [server]
 addr = ":18080"          # HTTP 监听地址
 mode = "release"          # gin 运行模式：debug | release
-
+workers = 4               # 并发工作者数（同时进行的重内存分析任务数），未配置默认 4，最小 1；按单请求峰值约 90MB 估算，4 并发约 360MB 峰值
 [log]
 level = "warn"          # 日志级别：debug | info | warn | error
 

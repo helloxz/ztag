@@ -24,32 +24,25 @@ type ImageService struct {
 	sem     chan struct{} // 并发分析信号量：控制同时进行的重内存操作数（下载/解码/base64）
 }
 
-// concurrencyLimitByMemory 按进程可用内存上限动态决定并发分析槽位数：
-//   - < 500MB：2
-//   - 500MB ~ 1GB：4
-//   - > 1GB：8
+// effectiveWorkers 根据配置值决定并发工作者数：
+//   - 配置缺失时 viper 已默认 4（见 config.Load），此处仅作最小值钳位；
+//   - 配置值 <1（显式错误值如 0、负数）→ 钳位为 1；
+//   - 正常值 → 直接使用配置值。
 //
-// 依据：单请求峰值内存约 90MB（6000x4500 大图解码 + 缩放 + base64），
-// 并发峰值 ≈ 槽位数 × 90MB，需为 Go 运行时/连接池预留余量，防止打爆容器内存；
-// 内存探测失败（返回 0）时按最保守的 2 处理。
-func concurrencyLimitByMemory() int {
-	mem := helper.MemoryLimitBytes()
-	switch {
-	case mem == 0 || mem < 500*1024*1024:
-		return 2
-	case mem < 1024*1024*1024:
-		return 4
-	default:
-		return 8
+// 约束：无论何种情况，并发不能小于 1；未配置时为 4。
+func effectiveWorkers(n int) int {
+	if n < 1 {
+		return 1
 	}
+	return n
 }
 
 // NewImageService 构建图片分析业务服务。
-func NewImageService(gateway *ai.Gateway, cfg config.AIConfig) *ImageService {
+func NewImageService(gateway *ai.Gateway, cfg config.AIConfig, workers int) *ImageService {
 	return &ImageService{
 		gateway: gateway,
 		cfg:     cfg,
-		sem:     make(chan struct{}, concurrencyLimitByMemory()),
+		sem:     make(chan struct{}, effectiveWorkers(workers)),
 	}
 }
 
