@@ -163,7 +163,7 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 	// 解析模型返回的 JSON（兼容 markdown 包裹与前后缀文本）
 	var out imageAnalysisOutput
 	if err := parseImageAnalysisJSON(result.Text, &out); err != nil {
-		slog.Warn("json_object parse failed, retrying once", "err", err, "raw", truncateForLog(result.Text))
+		slog.Warn("json_object parse failed, retrying once", "err", err, "model", a.modelName, "channel", a.channel.ID)
 		// 重试一次（不计入 maxRetries）
 		result2, err2 := goai.GenerateText(ctx, lm, opts...)
 		if err2 != nil {
@@ -177,7 +177,7 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 
 	// 空内容兜底（DeepSeek json_object 偶发空 content）
 	if out.Keywords == nil && out.Description == "" && out.Classification.Category == "" {
-		slog.Warn("json_object returned empty content, retrying once", "raw", truncateForLog(result.Text))
+		slog.Warn("json_object returned empty content, retrying once", "model", a.modelName, "channel", a.channel.ID)
 		result2, err2 := goai.GenerateText(ctx, lm, opts...)
 		if err2 == nil {
 			var out2 imageAnalysisOutput
