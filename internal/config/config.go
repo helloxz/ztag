@@ -58,7 +58,38 @@ type AIConfig struct {
 	TopP                     float64         `mapstructure:"top_p"`                      // 核采样（0~1，控制随机性，默认 0.9）
 	DisabledThinkingKeywords []string        `mapstructure:"disabled_thinking_keywords"` // 命中即显式关闭思考的模型关键词列表（如 qwen/mimo/deepseek）
 	Channels                 []ChannelConfig `mapstructure:"channels"`                   // 渠道列表（id 仅允许 default / backup）
+	Decision                 DecisionConfig  `mapstructure:"decision"`                   // 场景决策模型（Gemini Decision 1 / Decisions API）
 }
+
+// DecisionConfig 场景决策模型配置（Gemini Decision 1）。
+//
+// 与 [[ai.channels]] 的聊天渠道不同：决策模型走独立的 Decisions API，
+// 只输出分类概率与风险评分，不生成任何文本，因此不支持主备切换、
+// temperature/top_p、structured output 等参数。缺失该段时不阻断启动，
+// 仅对应接口返回 "decision model is not configured"。
+type DecisionConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`    // 是否启用场景决策接口
+	BaseURL    string `mapstructure:"base_url"`   // 接口基础地址（可带 /v1beta，也可是兼容网关）
+	APIKey     string `mapstructure:"api_key"`    // API Key（请求头 x-goog-api-key）
+	Model      string `mapstructure:"model"`      // 模型标识，如 gemini-decision-1
+	Resolution string `mapstructure:"resolution"` // 图片分辨率档位：low | medium | high | ultra_high
+	Timeout    int    `mapstructure:"timeout"`    // 单次调用超时（秒），缺省/非法回退 30s
+}
+
+// 决策模型默认值。
+const (
+	DefaultDecisionBaseURL = "https://generativelanguage.googleapis.com" // 默认 Gemini API 基础地址
+	DefaultDecisionModel   = "gemini-decision-1"                         // 默认模型标识
+	DefaultDecisionTimeout = 30                                          // 默认单次调用超时（秒）
+)
+
+// 决策模型图片分辨率档位（影响 token 成本与细节识别能力）。
+const (
+	DecisionResolutionLow       = "low"
+	DecisionResolutionMedium    = "medium"
+	DecisionResolutionHigh      = "high"
+	DecisionResolutionUltraHigh = "ultra_high"
+)
 
 // 渠道 id 常量（固定主备双渠道）。
 const (
@@ -142,6 +173,11 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("ai.temperature", 0.2)
 	v.SetDefault("ai.top_p", 0.9)
 	v.SetDefault("ai.disabled_thinking_keywords", DefaultDisabledThinkingKeywords)
+	v.SetDefault("ai.decision.enabled", false)
+	v.SetDefault("ai.decision.base_url", DefaultDecisionBaseURL)
+	v.SetDefault("ai.decision.model", DefaultDecisionModel)
+	v.SetDefault("ai.decision.resolution", DecisionResolutionHigh)
+	v.SetDefault("ai.decision.timeout", DefaultDecisionTimeout)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
@@ -155,6 +191,10 @@ func Load(path string) (*Config, error) {
 	// 图片下载超时与 AI 超时分离：未配置/非法值回退 30s，不干扰 AI 超时
 	if cfg.AI.ImageTimeout <= 0 {
 		cfg.AI.ImageTimeout = 30
+	}
+	// 决策模型调用超时：未配置/非法值回退 30s
+	if cfg.AI.Decision.Timeout <= 0 {
+		cfg.AI.Decision.Timeout = DefaultDecisionTimeout
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -219,6 +259,24 @@ func (c *Config) validate() error {
 	// 默认渠道（id=default）必须存在，备用渠道（backup）允许缺省
 	if !hasDefault {
 		return fmt.Errorf("ai.channels must include a channel with id=\"default\"")
+	}
+
+	// 场景决策模型：仅在启用时校验必填项，未启用时允许整段缺失（兼容旧配置）
+	if c.AI.Decision.Enabled {
+		if c.AI.Decision.APIKey == "" {
+			return fmt.Errorf("ai.decision.api_key must not be empty when ai.decision.enabled = true")
+		}
+		if c.AI.Decision.Model == "" {
+			return fmt.Errorf("ai.decision.model must not be empty when ai.decision.enabled = true")
+		}
+		if c.AI.Decision.BaseURL == "" {
+			return fmt.Errorf("ai.decision.base_url must not be empty when ai.decision.enabled = true")
+		}
+		switch c.AI.Decision.Resolution {
+		case DecisionResolutionLow, DecisionResolutionMedium, DecisionResolutionHigh, DecisionResolutionUltraHigh:
+		default:
+			return fmt.Errorf("ai.decision.resolution must be one of low / medium / high / ultra_high, got: %q", c.AI.Decision.Resolution)
+		}
 	}
 	return nil
 }

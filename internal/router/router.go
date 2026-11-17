@@ -16,8 +16,9 @@ import (
 // Handlers 聚合所有业务 handler，避免 SetupRouter 参数过多。
 // 新增业务模块时，在此追加对应 handler 字段并在 main 中注入。
 type Handlers struct {
-	Health *handler.HealthHandler // 健康检查
-	Image  *handler.ImageHandler  // 图片分析
+	Health   *handler.HealthHandler   // 健康检查
+	Image    *handler.ImageHandler    // 图片分析
+	Decision *handler.DecisionHandler // 场景决策
 }
 
 // SetupRouter 构建并返回配置好的 gin 引擎，注册全部路由与中间件。
@@ -54,6 +55,8 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 	{
 		// 图片分析：识别内容、提取关键词/描述并分类
 		v1.POST("/image/analyze", hs.Image.Analyze)
+		// 场景决策：仅识别场景并给出 0~100 风险评分（Gemini Decision 1）
+		v1.POST("/image/decision", hs.Decision.Evaluate)
 	}
 
 	return r

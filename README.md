@@ -74,6 +74,23 @@ models = [
 - 渠道 `id` 仅允许 `default` / `backup`（配置校验强制，default 必填、backup 可选）。
 - `type` 支持三种协议：`openai-chat`（OpenAI Chat Completions 兼容）、`openai-response`（OpenAI Responses 兼容）、`anthropic`（Anthropic Messages 兼容，含阿里云等兼容网关）。
 - 请求时通过 `model="channel/modelId"`（如 `default/gpt-4o-mini`、`backup/claude-3-5-sonnet`）指定，未传则走 `default` 第一个；`load_balance=true` 时随机选 `default` 一个（与 `model` 互斥，`model` 优先）；`default`失败随机切 `backup`，`backup`失败再随机重试。
+
+### 场景决策模型配置（可选）
+
+`POST /api/v1/image/decision` 使用 Gemini Decision 1（Decisions API），只做场景分类与风险评分、不生成文本，因此没有 keywords/description，也没有主备切换与 temperature/top_p：
+
+```toml
+[ai.decision]
+enabled = false                                        # 未启用时该接口返回 decision model is not configured，不影响其它接口
+base_url = "https://generativelanguage.googleapis.com" # 可带 /v1beta，也支持兼容网关
+api_key = "your-gemini-api-key"                        # 请求头 x-goog-api-key
+model = "gemini-decision-1"
+resolution = "high"                                    # low | medium | high | ultra_high（影响 token 成本与细节识别）
+timeout = 30                                           # 单次调用超时（秒），<=0 回退 30s
+```
+
+> 旧部署的 `data/config.toml` 不会被自动改写，需手工补上该段后重启；缺失时仅该接口不可用。
+
 ## 快速开始
 
 ```bash
@@ -90,7 +107,21 @@ curl http://127.0.0.1:8080/healthz
 curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
   -H "Content-Type: application/json" \
   -d '{"image_url": "https://example.com/demo.jpg"}'
+
+# 场景决策：只返回场景分类与 0~100 风险评分
+curl -X POST http://127.0.0.1:8080/api/v1/image/decision \
+  -H "Content-Type: application/json" \
+  -d '{"image_url": "https://example.com/demo.jpg"}'
 ```
+
+场景决策返回（只保留两个字段）：
+
+```json
+{ "code": 200, "msg": "", "data": { "category": "porn", "score": 87 } }
+```
+
+- `category`：`normal | porn | suggestive | gore | violence | politics | gambling | drugs | terror | fraud | other_risk | blocked | prohibited`
+- `score`：0~100 风险分（越大越危险）。自然判定与普通拦截上限都是 **99**；**100 只表示极危拦截**（`category = prohibited`，通常是 CSAM），可直接用来触发极危处置流程。详见 `docs/image-decision.md`
 
 开启鉴权后需携带 API Key：
 
@@ -130,15 +161,15 @@ curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
 - `classification.risk_level`：综合风险 `low | medium | high`；`risk_reason`：判定依据概述（中文，人工复审用）
 - `model_id`：实际处理该图的大模型标识（含主备切换后的真实模型）；`elapsed_ms`：本次请求处理总耗时（毫秒，含图片下载与 AI 调用）
 
-### 图片校验与预处理策略（POST /api/v1/image/analyze）
+### 图片校验与预处理策略（图片分析 / 场景决策共用）
 
 请求经 `image_url`（或 `image_base64`）提交图片，后端对 URL 图片执行：
 
 1. **URL 格式校验**：必须为 http/https 且带主机名；
-2. **响应头校验**（GET 响应头，不下载内容）：`Content-Length` 存在且 ≤ `ai.max_image_bytes`（默认 10MB）；`Content-Type` 必须为图片 MIME（缺失时按 URL 后缀兜底，如 `.png`）；
+2. **下载与头部校验**：单次 GET，读取 body 前先校验状态码、`Content-Length`（必须存在且 ≤ `ai.max_image_bytes`，默认 10MB）与 `Content-Type`（缺失时按 URL 后缀兜底），通过后才按上限读取内容；
 3. **SSRF 防护**：默认拦截内网/保留地址（`ai.allow_private_urls = true` 可放行，仅本地联调用）；
 4. **图片压缩**：下载后对 `image/jpeg`、`image/png`、`image/bmp` 解码并按需等比缩放（最长边超过 2048px 时缩小，宽高比不变），统一编码为 webp（quality 80）；静态 webp 输入同样等比缩放后重编码（动画 webp、gif、avif 原样透传）；处理失败自动回退原图，不阻断审核。图片处理链路为纯 Go 实现（[imaging](https://github.com/disintegration/imaging) 缩放 + [deepteams/webp](https://github.com/deepteams/webp) 编码），无 cgo/libvips 依赖；
-5. **传给 AI**：预处理完成（含 webp 转换）后以 base64 data URI 送大模型分析。
+5. **传给 AI**：预处理完成（含 webp 转换）后以 base64 data URI 送大模型分析；两个接口共用同一并发信号量，总并发受 `server.workers` 限制。
 
 > 说明：webp 压缩降低的是传输体积；token 消耗主要取决于图片像素尺寸——预处理已将最长边限制在 2048px 以内（另设 4000 万总像素上限防解压炸弹），从源头控制了 token 与内存开销。
 
@@ -155,6 +186,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
 
 - [x] 骨架搭建：框架分层、路由/中间件/助手函数分离、hello world 可运行
 - [x] 图片识别接口：URL 校验 / header 探测（≤10MB、MIME、SSRF）/ 下载转 base64 / 主备切换 / goai 真实调用 / 二层分类结构化输出
+- [x] 场景决策接口：Gemini Decision 1（Decisions API）场景分类 + 0~100 风险评分；普通安全拦截映射 blocked/99，极危拦截（prohibited_content/blocklist）映射 prohibited/100 并落 Error 日志
 - [ ] 端到端真实模型验证（配置 API Key 后）
 - [ ] 限流、容量与监控
 - [ ] 分类阈值（score 截断值）与风险等级策略可配置化

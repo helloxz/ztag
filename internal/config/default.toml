@@ -60,3 +60,15 @@ api_key = "replace-with-your-api-key"
 models = [
   "claude-3-5-sonnet",
 ]
+
+# ---------------- 场景决策模型（可选） ----------------
+# 使用 Gemini Decision 1（Decisions API）：只做场景分类与风险评分，不生成文本，
+# 因此没有 keywords/description，也没有主备切换、temperature/top_p 等参数。
+# enabled = false 或整段缺失时不影响启动，仅 POST /api/v1/image/decision 返回未配置。
+[ai.decision]
+enabled = false                                        # 是否启用场景决策接口
+base_url = "https://generativelanguage.googleapis.com" # 可带 /v1beta，也支持兼容网关
+api_key = "replace-with-your-gemini-api-key"           # 请求头 x-goog-api-key
+model = "gemini-decision-1"                            # 模型标识
+resolution = "high"                                    # 图片分辨率：low | medium | high | ultra_high
+timeout = 30                                           # 单次调用超时（秒），<=0 回退 30s

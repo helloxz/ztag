@@ -1,5 +1,12 @@
 package model
 
+// ImageInput 图片来源输入：URL 与 base64 二选一。
+// 由图片分析请求与场景决策请求共用，保证两个接口的入参契约一致。
+type ImageInput struct {
+	ImageURL    string `json:"image_url"`    // 图片 URL（与 ImageBase64 二选一）
+	ImageBase64 string `json:"image_base64"` // 图片 base64 内容（与 ImageURL 二选一）
+}
+
 // AnalyzeRequest 图片分析请求体。
 // 调用方三选一提供图片：
 //   - ImageURL：图片的 HTTP(S) 地址，由服务端下载；
@@ -7,8 +14,7 @@ package model
 //
 // 后续如需支持 multipart 文件上传，可在该结构体上扩展 FormFile 字段。
 type AnalyzeRequest struct {
-	ImageURL    string `json:"image_url"`    // 图片 URL（与 ImageBase64 二选一）
-	ImageBase64 string `json:"image_base64"` // 图片 base64 内容（与 ImageURL 二选一）
+	ImageInput
 	Model       string `json:"model"`        // 可选：格式为 "channel/modelId"（如 "default/gpt-4o-mini"），channel 仅允许 default/backup，modelId 可含斜杠；为空则由网关按负载均衡决定
 	LoadBalance bool   `json:"load_balance"` // 可选：仅当 Model 为空时生效，true 表示从 default 渠道中随机选择一个模型；与 Model 互斥，Model 优先
 
@@ -16,6 +22,36 @@ type AnalyzeRequest struct {
 	ImageDataURI string `json:"-"` // 图片 base64 data URI（data:image/xxx;base64,...）
 	ImageMIME    string `json:"-"` // 图片 MIME 类型（如 image/jpeg）
 }
+
+// DecisionRequest 场景决策请求体：只传图片，模型与渠道由服务端配置决定。
+type DecisionRequest struct {
+	ImageInput
+}
+
+// PreparedImage 预处理完成的图片产物（下载/校验/压缩转 webp 后）。
+// DataURI 为 data:image/xxx;base64,... 形式，MIME 为最终图片类型。
+type PreparedImage struct {
+	DataURI string // 图片 base64 data URI
+	MIME    string // 图片 MIME（如 image/webp）
+}
+
+// DecisionResult 场景决策结果：只包含场景分类与风险评分。
+type DecisionResult struct {
+	Category string `json:"category"` // 场景分类（固定枚举，见 ai 层白名单）
+	Score    int    `json:"score"`    // 风险评分 0~100：越大风险越高；99 为自然判定与普通拦截的上限，100 表示极危拦截（prohibited）
+
+	// 内部字段：供 service 层记录日志，不参与对外 JSON
+	Confidence     float64            `json:"-"` // 模型对该分类的置信度 0~1
+	Probabilities  map[string]float64 `json:"-"` // 各场景概率（调试用）
+	BlockedCode    string             `json:"-"` // 供应商安全拦截错误码（如 safety / prohibited_content）
+	BlockedMessage string             `json:"-"` // 供应商安全拦截错误描述
+}
+
+// 场景决策分类中由服务端合成的特殊分类（供应商安全策略直接拒绝输入，非模型分类）。
+const (
+	CategoryBlocked    = "blocked"    // 普通安全拦截（safety / image_safety / jailbreak 等），风险分固定 99
+	CategoryProhibited = "prohibited" // 极危拦截（prohibited_content / blocklist，通常为 CSAM），风险分固定 100
+)
 
 // AnalyzeResult 图片分析结果（AI 网关返回的结构化产物）。
 type AnalyzeResult struct {

@@ -68,17 +68,20 @@ func main() {
 	}
 
 	// ---------- 3. 构建核心依赖（由下至上） ----------
-	// AI 多渠道网关 → 图片业务服务 → 各 handler
+	// AI 多渠道网关 / 场景决策分析器 → 共享图片预处理器 → 各业务 service → 各 handler
 	gateway := ai.NewGateway(cfg.AI)
-	imageSvc := service.NewImageService(gateway, cfg.AI, cfg.Server.Workers)
+	preparer := service.NewImagePreparer(cfg.AI, cfg.Server.Workers)
+	imageSvc := service.NewImageService(gateway, preparer)
+	decisionSvc := service.NewDecisionService(preparer, ai.NewDecisionAnalyzer(cfg.AI))
 
 	// 请求体上限：base64 编码膨胀约 4/3，另留 JSON 外壳与 data URI 前缀余量
 	const maxRequestBodyExtra = 64 * 1024
 	maxRequestBody := cfg.AI.MaxImageBytes*4/3 + maxRequestBodyExtra
 
 	hs := &router.Handlers{
-		Health: handler.NewHealthHandler(),
-		Image:  handler.NewImageHandler(imageSvc, maxRequestBody),
+		Health:   handler.NewHealthHandler(),
+		Image:    handler.NewImageHandler(imageSvc, maxRequestBody),
+		Decision: handler.NewDecisionHandler(decisionSvc, maxRequestBody),
 	}
 
 	// ---------- 4. 构建路由并启动 HTTP 服务 ----------
