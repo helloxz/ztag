@@ -38,8 +38,17 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          # 必须 >= go1.27.4：CVE-2026-111943（eMudhra 中间证书拒信）在 1.26.10/1.27.3 修复，
+          # CVE-2026-97054（net/http MaxBytesReader 竞态崩溃）在 1.26.11/1.27.4 修复。
+          # 精确锁补丁号，避免 "1.25"/"1.27" 这类写法随 setup-go 解析漂移。
+          go-version: "1.27.4"
           cache: true
+
+      - name: Verify Go toolchain
+        run: |
+          # 二道保险：go.mod 的 toolchain 行与本步骤任一失效都要让发布失败
+          go version
+          go version | grep -q 'go1\.27\.4' || { echo "Go toolchain must be go1.27.4 (fixes CVE-2026-111943 / CVE-2026-97054)" >&2; exit 1; }
 
       - name: Install tooling (upx)
         run: |

@@ -35,10 +35,11 @@ type PreparedImage struct {
 	MIME    string // 图片 MIME（如 image/webp）
 }
 
-// DecisionResult 场景决策结果：只包含场景分类与风险评分。
+// DecisionResult 场景决策结果：只包含场景分类、风险评分与处理耗时。
 type DecisionResult struct {
-	Category string `json:"category"` // 场景分类（固定枚举，见 ai 层白名单）
-	Score    int    `json:"score"`    // 风险评分 0~100：越大风险越高；99 为自然判定与普通拦截的上限，100 表示极危拦截（prohibited）
+	Category  string `json:"category"`   // 场景分类（固定枚举，见 ai 层白名单）
+	Score     int    `json:"score"`      // 风险评分 0~100：越大风险越高；99 为自然判定与普通拦截的上限，100 表示极危拦截（prohibited）
+	ElapsedMs int64  `json:"elapsed_ms"` // 本次请求处理总耗时（毫秒），由 handler 层在响应前填充
 
 	// 内部字段：供 service 层记录日志，不参与对外 JSON
 	Confidence     float64            `json:"-"` // 模型对该分类的置信度 0~1

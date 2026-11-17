@@ -5,6 +5,7 @@
 ## 技术栈
 
 - 语言 / Web 框架：Go + [gin](https://github.com/gin-gonic/gin)
+  - 构建工具链锁定 `go1.27.4`（见 `go.mod` 的 `toolchain` 行），低于该版本会自动下载；不要降级，1.27.4 修复了 CVE-2026-111943（eMudhra 中间证书拒信）与 CVE-2026-97054（net/http MaxBytesReader 竞态崩溃）
 - 配置管理：[viper](https://github.com/spf13/viper)，配置格式 TOML
 - AI SDK：[github.com/zendev-sh/goai](https://github.com/zendev-sh/goai)（统一 SDK，一个接口对接 25+ 厂商）
 
@@ -114,14 +115,15 @@ curl -X POST http://127.0.0.1:8080/api/v1/image/decision \
   -d '{"image_url": "https://example.com/demo.jpg"}'
 ```
 
-场景决策返回（只保留两个字段）：
+场景决策返回：
 
 ```json
-{ "code": 200, "msg": "", "data": { "category": "porn", "score": 87 } }
+{ "code": 200, "msg": "", "data": { "category": "porn", "score": 87, "elapsed_ms": 312 } }
 ```
 
 - `category`：`normal | porn | suggestive | gore | violence | politics | gambling | drugs | terror | fraud | other_risk | blocked | prohibited`
 - `score`：0~100 风险分（越大越危险）。自然判定与普通拦截上限都是 **99**；**100 只表示极危拦截**（`category = prohibited`，通常是 CSAM），可直接用来触发极危处置流程。详见 `docs/image-decision.md`
+- `elapsed_ms`：本次请求处理总耗时（毫秒，含图片下载/压缩与模型调用；不含中间件）
 
 开启鉴权后需携带 API Key：
 

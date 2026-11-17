@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/helloxz/ztag/internal/ai"
 	"github.com/helloxz/ztag/internal/model"
@@ -26,14 +27,20 @@ func NewDecisionService(preparer *ImagePreparer, analyzer ai.DecisionAnalyzer) *
 //
 //	共享图片预处理（并发槽位 → URL 校验 → 下载 → 压缩转 webp → base64）→ 决策模型
 //
-// 被供应商安全策略拦截时返回 blocked / 100，并记录 Warn 日志（含图片 URL 与拦截码）。
+// 被供应商安全策略拦截时返回 blocked（99）或 prohibited（100），
+// 并记录 Warn / Error 日志（含图片 URL 与拦截码）。
+// 响应字段 elapsed_ms 由 handler 层填充；此处只在日志里拆分 prepare_ms / model_ms，便于定位瓶颈。
 func (s *DecisionService) Evaluate(ctx context.Context, req *model.DecisionRequest) (*model.DecisionResult, error) {
+	prepareStart := time.Now()
 	img, err := s.preparer.Prepare(ctx, &req.ImageInput)
+	prepareMs := time.Since(prepareStart).Milliseconds()
 	if err != nil {
 		return nil, err
 	}
 
+	modelStart := time.Now()
 	result, err := s.analyzer.EvaluateImage(ctx, img)
+	modelMs := time.Since(modelStart).Milliseconds()
 	if err != nil {
 		return nil, err
 	}
@@ -50,17 +57,20 @@ func (s *DecisionService) Evaluate(ctx context.Context, req *model.DecisionReque
 		slog.Error("decision input flagged as prohibited content, handle per incident runbook",
 			"source", source, "url", ref,
 			"provider_code", result.BlockedCode, "provider_message", result.BlockedMessage,
-			"category", result.Category, "score", result.Score)
+			"category", result.Category, "score", result.Score,
+			"prepare_ms", prepareMs, "model_ms", modelMs)
 	case model.CategoryBlocked:
 		slog.Warn("decision input blocked by provider safety filter",
 			"source", source, "url", ref,
 			"provider_code", result.BlockedCode, "provider_message", result.BlockedMessage,
-			"category", result.Category, "score", result.Score)
+			"category", result.Category, "score", result.Score,
+			"prepare_ms", prepareMs, "model_ms", modelMs)
 	default:
 		slog.Debug("decision evaluated",
 			"source", source, "url", ref,
 			"category", result.Category, "score", result.Score,
-			"confidence", result.Confidence)
+			"confidence", result.Confidence,
+			"prepare_ms", prepareMs, "model_ms", modelMs)
 	}
 
 	return result, nil

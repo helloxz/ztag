@@ -26,7 +26,7 @@ router → handler → service → ai
    - `code`：200 成功（msg 为空）；失败一律 `-1000`（msg 为英文原因）；`data` 类型随场景
    - 成功用 `helper.OK(c, data)`；service 层抛 `model.NewBizError(msg)`，handler 用 `helper.FailWithError(c, err)` 收口；中间件失败响应也按此契约
    - 图片分析 `data`：`keywords`(3-5) + `description`(≤150字) + `classification{category, score, risk_level, risk_reason}` + `model_id`(实际模型) + `elapsed_ms`(毫秒耗时)；`category` 枚举固定白名单 `normal|porn|suggestive|gore|violence|politics|gambling|drugs|terror|other_risk`
-   - 场景决策 `data`：仅 `category` + `score`(0~100 整数)；`category` 白名单在图片分析白名单基础上增加 `fraud|blocked|prohibited`（无 `qrcode`，二维码识别准确率不足，扫码诈骗归 `fraud`）；自然判定与普通拦截封顶 99，`score=100` 且 `category=prohibited` 专指极危拦截（`prohibited_content`/`blocklist`，通常为 CSAM，fail-closed，需落 Error 日志并按极危流程处置）
+   - 场景决策 `data`：`category` + `score`(0~100 整数) + `elapsed_ms`(毫秒耗时，handler 填充)；`category` 白名单在图片分析白名单基础上增加 `fraud|blocked|prohibited`（无 `qrcode`，二维码识别准确率不足，扫码诈骗归 `fraud`）；自然判定与普通拦截封顶 99，`score=100` 且 `category=prohibited` 专指极危拦截（`prohibited_content`/`blocklist`，通常为 CSAM，fail-closed，需落 Error 日志并按极危流程处置）
 4. **性能与安全**：始终传递 `context`（超时/取消）；图片 URL 必须校验（≤10MB、图片 MIME、SSRF 默认拦截内网）；图片分析失败按主备切换（default→backup→报错），场景决策为单模型无主备（仅重试）；避免重复请求与不必要开销
 5. **结构**：新增路由只进 `internal/router`；中间件进 `internal/middleware`；助手函数进 `internal/helper`；对外接口统一挂 `/api/v1` 分组
 6. **限制：** 未经允许不得读取data/config.toml 内容

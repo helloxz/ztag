@@ -4,6 +4,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -31,10 +32,13 @@ func NewDecisionHandler(svc *service.DecisionService, maxRequestBody int64) *Dec
 //	{ "image_url": "https://example.com/x.jpg" }
 //	或 { "image_base64": "<base64 内容>" }
 //
-// 响应为统一结构 { code, msg, data }，data 只包含场景分类与风险评分：
+// 响应为统一结构 { code, msg, data }，data 包含场景分类、风险评分与总耗时：
 //
-//	{ "category": "porn", "score": 87 }
+//	{ "category": "porn", "score": 87, "elapsed_ms": 312 }
 func (h *DecisionHandler) Evaluate(c *gin.Context) {
+	// 记录请求起始时间，用于计算总处理耗时（毫秒）
+	start := time.Now()
+
 	var req model.DecisionRequest
 	// 源头拦截超大请求体：在读取阶段即掐断，避免超大 base64 负载全量进入内存
 	if h.maxRequestBody > 0 {
@@ -52,5 +56,7 @@ func (h *DecisionHandler) Evaluate(c *gin.Context) {
 		return
 	}
 
+	// 填充请求总耗时（含请求解析、信号量排队、图片下载/压缩、模型调用）
+	result.ElapsedMs = time.Since(start).Milliseconds()
 	helper.OK(c, result)
 }

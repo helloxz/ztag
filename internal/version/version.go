@@ -2,4 +2,4 @@
 package version
 
 // Version 当前服务版本号。
-const Version = "v0.2.3"
+const Version = "v0.3.0"

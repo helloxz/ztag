@@ -52,13 +52,14 @@ Authorization: Bearer <api_key>
 ### 4.1 成功响应
 
 ```json
-{ "code": 200, "msg": "", "data": { "category": "porn", "score": 87 } }
+{ "code": 200, "msg": "", "data": { "category": "porn", "score": 87, "elapsed_ms": 312 } }
 ```
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `category` | string | 场景分类，固定枚举（见 4.2） |
 | `score` | number(int) | 风险分 **0~100**，越大风险越高 |
+| `elapsed_ms` | number(int) | 请求处理总耗时（毫秒）：含请求解析、并发信号量排队、图片下载/校验/压缩、模型调用（含重试）；不含 gin 中间件耗时 |
 
 ### 4.2 分类枚举（category）
 
