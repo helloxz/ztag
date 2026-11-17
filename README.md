@@ -173,6 +173,31 @@ curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
 
 > 说明：webp 压缩降低的是传输体积；token 消耗主要取决于图片像素尺寸——预处理已将最长边限制在 2048px 以内（另设 4000 万总像素上限防解压炸弹），从源头控制了 token 与内存开销。
 
+## Docker 部署
+
+镜像由 GitHub Actions 在推送 `v*` tag 后自动构建，推送到 GHCR（仅 `linux/amd64`）：
+
+```bash
+# 拉取（首次使用若包仍为私有，需先在 GitHub Packages 设置中改为 public，或 docker login ghcr.io）
+docker pull ghcr.io/helloxz/ztag:latest
+
+# 运行（配置持久化到宿主机 ./data）
+docker run -d --name ztag -p 18080:18080 \
+  -v "$PWD/data:/app/data" -e TZ=Asia/Shanghai \
+  ghcr.io/helloxz/ztag:latest
+
+# 或直接使用仓库内 compose.yaml
+docker compose up -d
+```
+
+镜像 tag 跟随版本号：`v0.2.3` / `0.2.3` / `0.2` / `latest`（预发布版本不打 `latest`）。补推某个历史版本的镜像：Actions → `Release` → Run workflow，填入已存在的 tag。
+
+本地构建（建议锁定版本，否则构建时会解析 GitHub 上最新的 release）：
+
+```bash
+docker build --build-arg VERSION=v0.2.3 -t ztag:v0.2.3 .
+```
+
 ## 中间件说明
 
 | 中间件 | 作用 | 挂载范围 |

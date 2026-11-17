@@ -1,6 +1,7 @@
 services:
   ztag:
-    image: helloz/ztag
+    # 镜像由 GitHub Actions 发布到 GHCR（linux/amd64）
+    image: ghcr.io/helloxz/ztag:latest
     container_name: ztag
     restart: unless-stopped
     ports:

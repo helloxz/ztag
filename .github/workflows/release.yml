@@ -1,10 +1,18 @@
-# Release: 仅在推送 v* tag 时触发，编译 Linux amd64/arm64 并用 UPX 最佳压缩后打包
+# Release: 推送 v* tag 时编译 Linux amd64/arm64 二进制（UPX 压缩）并发布 GitHub Release，
+#          随后构建 linux/amd64 Docker 镜像推送到 GHCR。
+# 手动补推镜像：Actions → Release → Run workflow，填入已存在的 tag（如 v0.2.3），只跑 docker job。
 name: Release
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "已存在的 release tag（形如 v0.2.3），仅重建/补推镜像"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,6 +20,8 @@ permissions:
 jobs:
   build:
     name: build-${{ matrix.goarch }}
+    # workflow_dispatch 只补推镜像，不重新编译/发版
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
@@ -102,6 +112,7 @@ jobs:
   release:
     name: release
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -124,3 +135,102 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================
+  # GHCR 镜像：等待 release 资产就绪后构建（Dockerfile 会下载该 tag 的二进制）
+  # 仅 linux/amd64；镜像 tag 与 git tag 对齐：v0.2.3 / 0.2.3 / 0.2 / latest
+  # ============================================================
+  docker:
+    name: docker-ghcr
+    needs: [build, release]
+    # 推 tag 时要求 release 成功；workflow_dispatch 时 build/release 被跳过，仅跑本 job
+    if: always() && !cancelled() && (github.event_name == 'workflow_dispatch' || needs.release.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 默认分支或指定 tag：保证 Dockerfile / scripts 与被构建的版本一致
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          VER="${INPUT_TAG}"
+          if [ -n "$VER" ]; then
+            echo "using workflow_dispatch input: $VER"
+          else
+            # 从 internal/version/version.go 读取 Version 常量，失败则回退到 tag 名
+            VER=$(grep -oE '"v[0-9]+\.[0-9]+\.[0-9][^"]*"' internal/version/version.go | tr -d '"' | head -n1 || true)
+          fi
+          if [ -z "$VER" ]; then
+            VER="${GITHUB_REF_NAME}"
+            echo "version.go 解析失败，回退到 tag: $VER"
+          fi
+          case "$VER" in
+            v*) ;;
+            *) echo "invalid version (must start with v): $VER" >&2; exit 1 ;;
+          esac
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VER"
+
+      - name: Verify release assets exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VER: ${{ steps.version.outputs.version }}
+        run: |
+          # 快速失败：镜像构建阶段会下载该 tag 的 release 资产
+          if ! gh release view "$VER" --repo "$REPO" >/dev/null 2>&1; then
+            echo "release $VER not found in $REPO" >&2
+            exit 1
+          fi
+          ASSETS="$(gh release view "$VER" --repo "$REPO" --json assets -q '.assets[].name')"
+          if ! printf '%s\n' "$ASSETS" | grep -qx "ztag-${VER}-linux-amd64.tar.gz"; then
+            echo "asset ztag-${VER}-linux-amd64.tar.gz not found in release $VER:" >&2
+            printf '%s\n' "$ASSETS" >&2
+            exit 1
+          fi
+          echo "release assets OK"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }}
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ !contains(steps.version.outputs.version, '-') }}
+
+      - name: Build and push (linux/amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 锁定版本，禁止 Dockerfile 回退到 latest 解析（避免版本漂移）
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=ztag-docker
+          cache-to: type=gha,mode=max,scope=ztag-docker
+          provenance: false
+

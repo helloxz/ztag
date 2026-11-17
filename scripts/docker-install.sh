@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # ============================================================
-# docker-install.sh: 安装运行时依赖并下载最新 ztag 二进制
+# docker-install.sh: 安装运行时依赖并下载 ztag 二进制
 # 由 Dockerfile 调用，工作目录为 /app
+# 用法: docker-install.sh [arch] [version]
+#   arch    架构（amd64/arm64），缺省取 TARGETARCH 或自动推断
+#   version 锁定的 release 版本（如 v0.2.3），缺省解析 latest
 # ============================================================
 set -euxo pipefail
 
 # 允许通过参数或环境变量传入架构，Dockerfile 会传递 TARGETARCH
 ARCH="${1:-${TARGETARCH:-}}"
+# 锁定的版本号（CI 传入，避免 latest 漂移）
+PINNED="${2:-${VERSION:-}}"
 if [ -z "$ARCH" ]; then
   # 回退：根据系统架构自动推断
   MACHINE="$(uname -m)"
@@ -35,28 +40,34 @@ apt-get install -y --no-install-recommends \
 # 清理 apt 缓存减小镜像体积
 rm -rf /var/lib/apt/lists/*
 
-echo ">>> Resolving latest ztag version..."
-# 优先通过 GitHub API 获取最新 tag，其次通过重定向 Location 头
+echo ">>> Resolving ztag version..."
 VER=""
-if VER="$(curl -fsSL https://api.github.com/repos/helloxz/ztag/releases/latest | grep -oE '\"tag_name\"[[:space:]]*:[[:space:]]*\"[^\"]+\"' | head -n1 | sed -E 's/.*\"(v[^\"]+)\".*/\1/')"; then
-  if [ -n "$VER" ]; then
-    echo "resolved version via API: $VER"
+if [ -n "$PINNED" ]; then
+  # 优先使用显式锁定版本：CI 构建与历史版本重建都走这里
+  VER="$PINNED"
+  echo ">>> Using pinned version: $VER"
+else
+  # 未锁定时：优先通过 GitHub API 获取最新 tag，其次通过重定向 Location 头
+  if VER="$(curl -fsSL https://api.github.com/repos/helloxz/ztag/releases/latest | grep -oE '\"tag_name\"[[:space:]]*:[[:space:]]*\"[^\"]+\"' | head -n1 | sed -E 's/.*\"(v[^\"]+)\".*/\1/')"; then
+    if [ -n "$VER" ]; then
+      echo "resolved version via API: $VER"
+    fi
+  fi
+
+  # API 失败时回退到解析重定向 URL
+  if [ -z "$VER" ]; then
+    echo "API failed, fallback to redirect parsing..."
+    REDIRECT_URL="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/helloxz/ztag/releases/latest || true)"
+    # 期望 https://github.com/helloxz/ztag/releases/tag/v0.1.0
+    VER="$(echo "$REDIRECT_URL" | grep -oE 'tag/v[0-9]+\.[0-9]+\.[0-9]+.*' | sed 's|tag/||' | cut -d'/' -f1 || true)"
+    if [ -n "$VER" ]; then
+      echo "resolved version via redirect: $VER"
+    fi
   fi
 fi
 
-# API 失败时回退到解析重定向 URL
 if [ -z "$VER" ]; then
-  echo "API failed, fallback to redirect parsing..."
-  REDIRECT_URL="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/helloxz/ztag/releases/latest || true)"
-  # 期望 https://github.com/helloxz/ztag/releases/tag/v0.1.0
-  VER="$(echo "$REDIRECT_URL" | grep -oE 'tag/v[0-9]+\.[0-9]+\.[0-9]+.*' | sed 's|tag/||' | cut -d'/' -f1 || true)"
-  if [ -n "$VER" ]; then
-    echo "resolved version via redirect: $VER"
-  fi
-fi
-
-if [ -z "$VER" ]; then
-  echo "failed to resolve latest version" >&2
+  echo "failed to resolve ztag version (latest lookup failed; pass an explicit version, e.g. v0.2.3)" >&2
   exit 1
 fi
 
