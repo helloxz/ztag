@@ -25,8 +25,9 @@ max_retries = 2               # 单渠道内失败重试次数
 mock = false                  # 是否启用模拟 AI（本地联调用）；仅支持改配置文件，管理台不展示
 max_image_bytes = 10485760    # 图片大小上限（字节），默认 10MB
 allow_private_urls = false    # 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）；仅支持改配置文件，管理台不展示
-temperature = 0.2             # 采样温度（0~2，越低输出越稳定）；仅支持改配置文件，管理台不展示
-top_p = 0.9                   # 核采样（0~1，控制随机性，0 表示不设置走模型默认）；仅支持改配置文件，管理台不展示
+temperature = 0               # 采样温度（0~2）；0 = 不发送该参数，走模型默认。GPT-5 系列等推理模型在思考模式下不接受该参数，传了会 400；
+                              # 接 Qwen/DeepSeek 等非推理模型时可改成 0.1~0.2 让输出更稳定；仅支持改配置文件，管理台不展示
+top_p = 0                     # 核采样（0~1）；0 = 不发送该参数，走模型默认；与 temperature 建议二选一；仅支持改配置文件，管理台不展示
 disabled_thinking_keywords = [  # 命中任一关键词（不区分大小写）时请求显式关闭思考模式；可在管理台「图像分析 → 模型行为」编辑
   "qwen",                      # Qwen3 系列（含 -Thinking 后缀变体）
   "mimo",                      # MiMo 系列（默认开启思考）
@@ -36,8 +37,9 @@ disabled_thinking_keywords = [  # 命中任一关键词（不区分大小写）�
 # ---------------- 主备双渠道配置 ----------------
 # 固定支持两个渠道 id（唯一标识）：
 #   default : 默认渠道（必填），普通请求走这里；
-#   backup  : 备用渠道（可选，可整节删除），default 失败时切换兜底。
-# 每个渠道可配置多个模型（models 为模型标识字符串数组）。
+#   backup  : 备用渠道（可选，默认不启用），default 失败时切换兜底；
+#             需要时把下面「备用渠道」整段取消注释并填好 base_url / api_key / models。
+# 每个渠道可配置多个模型（models 为模型标识字符串数组），模型必须支持图片输入（多模态）。
 # type 支持三种协议：
 #   openai-chat     : OpenAI Chat Completions 兼容接口
 #   openai-response : OpenAI Responses 兼容接口
@@ -48,18 +50,19 @@ type = "openai-chat"          # 协议类型
 base_url = "https://api.openai.com/v1"
 api_key = "replace-with-your-api-key"
 models = [
-  "gpt-4o-mini",
-  "gpt-4o",
+  "gpt-5.6-luna",             # 轻量快速：默认走它，适合大批量打标
+  "gpt-5.4-mini",             # 质量优先：请求时传 model=default/gpt-5.4-mini 指定
 ]
 
-[[ai.channels]]
-id = "backup"                 # Anthropic 兼容备用渠道示例（阿里云）
-type = "anthropic"
-base_url = "https://dashscope.aliyuncs.com/api/v2/apps/anthropic"
-api_key = "replace-with-your-api-key"
-models = [
-  "claude-3-5-sonnet",
-]
+# 备用渠道（默认不启用）：取消下面整段注释即可开启，default 失败时自动切换兜底
+# [[ai.channels]]
+# id = "backup"                 # Anthropic 兼容备用渠道示例（阿里云）
+# type = "anthropic"
+# base_url = "https://dashscope.aliyuncs.com/api/v2/apps/anthropic"
+# api_key = "replace-with-your-api-key"
+# models = [
+#   "claude-3-5-sonnet",
+# ]
 
 # ---------------- 风险审核（决策模型，支持多渠道） ----------------
 # 接口：
@@ -67,6 +70,10 @@ models = [
 #   POST /api/v1/text/decision    文本审核（text）
 # 请求里可用 model 指定下面的渠道 id；不指定则按配置顺序轮询。
 # 某个渠道失败时：还有其它渠道就换一个再试一次，只有一个渠道就重试一次。
+#
+# 注意：默认不启用（下面 [ai.decision] 的 enabled = false，渠道也默认关闭/注释）。
+#   启用总开关前，请先至少启用一个渠道（把对应节的 enabled 改为 true），
+#   否则配置校验会失败（ai.decision.channels must have at least one enabled channel）。
 #
 # type 支持两种协议：
 #   gemini-decision : Gemini Decision 1（Gemini 原生 Decisions API）
@@ -84,20 +91,21 @@ max_text_chars = 4000    # 文本审核字符上限，超长直接报错
 [[ai.decision.channels]]
 id = "gemini-main"       # 渠道 id：调用时 model 填这个值；小写字母/数字/下划线/中划线，需唯一
 type = "gemini-decision" # 协议类型
-enabled = true           # 单渠道开关
+enabled = false          # 单渠道开关：默认关闭，需要时改成 true（总开关也要开）
 base_url = "https://generativelanguage.googleapis.com" # 实际请求 {base_url}/v1beta/decisions
 api_key = "replace-with-your-gemini-api-key"           # 请求头 x-goog-api-key
 model = "gemini-decision-1"                            # 上游模型标识
 resolution = "high"                                    # 图片分辨率：low | medium | high | ultra_high
 
-[[ai.decision.channels]]
-id = "openai-main"
-type = "openai-decision"
-enabled = true
-base_url = "https://ai-gateway.vercel.sh/v1"           # 实际请求 {base_url}/decisions
-api_key = "replace-with-your-ai-gateway-key"           # 请求头 Authorization: Bearer
-model = "openai/gpt-6-luna-decisions"
-resolution = "high"                                    # 映射为 OpenAI 的 detail：low→low / medium→auto / high→high / ultra_high→original
+# 备用决策渠道示例（默认注释）：需要多渠道轮询/兜底时取消下面整段注释
+# [[ai.decision.channels]]
+# id = "openai-main"
+# type = "openai-decision"
+# enabled = true
+# base_url = "https://ai-gateway.vercel.sh/v1"         # 实际请求 {base_url}/decisions
+# api_key = "replace-with-your-ai-gateway-key"         # 请求头 Authorization: Bearer
+# model = "openai/gpt-6-luna-decisions"
+# resolution = "high"                                  # 映射为 OpenAI 的 detail：low→low / medium→auto / high→high / ultra_high→original
 
 # ---------------- Web 管理台管理员账号 ----------------
 # 访问 http://<addr>/admin 可在线管理配置、渠道与 API 密钥。

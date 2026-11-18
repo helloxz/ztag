@@ -91,8 +91,10 @@ type goaiAnalyzer struct {
 
 // AnalyzeImage 调用大模型分析图片：
 //  1. 图片以 base64 data URI 形式作为 PartImage 传入（openai / anthropic 均兼容）；
-//  2. 兼容性优先：使用 response_format=json_object（而非 json_schema/tool_choice），
-//     避免 DeepSeek 等思考模型与 tool_choice 的互斥；结果自行解析并做白名单归一。
+//  2. 兼容性优先：不使用 json_schema / tool_choice，避免 DeepSeek 等思考模型与之互斥；
+//     JSON 结构由系统提示词约束，结果自行解析并做白名单归一。
+//     注意：ProviderOptions 里的 response_format 会被 goai 当作保护键丢弃（0.9.x / 0.11.x 一致），
+//     不要依赖它，结构化输出只能靠提示词 + 解析兜底。
 func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeRequest) (*model.AnalyzeResult, error) {
 	// 前置校验：图片数据必须已由上层转换为 data URI
 	if req.ImageDataURI == "" {
@@ -114,7 +116,7 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 		},
 	}
 
-	// 兼容性优先：统一走 json_object，避免思考模型与 tool_choice/json_schema 互斥
+	// 兼容性优先：不传 json_schema / tool_choice，JSON 结构由系统提示词约束
 	opts := []goai.Option{
 		goai.WithSystem(imageAnalysisSystemPrompt),
 		goai.WithMessages(userMsg),
@@ -132,9 +134,8 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 	}
 
 	// ProviderOptions 必须合并为一次调用：goai 的 WithProviderOptions 为整体赋值
-	providerOptions := map[string]any{
-		"response_format": map[string]any{"type": "json_object"},
-	}
+	// 注意不要把 response_format 放进来：goai 将其视为保护键直接丢弃，设了也不会下发
+	providerOptions := map[string]any{}
 
 	// 按渠道协议显式指定 OpenAI 端点
 	switch a.channel.Type {
@@ -143,7 +144,7 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 	case config.ChannelTypeOpenAIResponse:
 		providerOptions["useResponsesAPI"] = true
 	}
-	// 命中「强制思考需显式关闭」名单的模型，显式关闭思考（json_object 下仍保留，提升稳定性）
+	// 命中「强制思考需显式关闭」名单的模型，显式关闭思考（JSON 输出场景下更稳定）
 	if a.shouldDisableThinking() {
 		switch a.channel.Type {
 		case config.ChannelTypeOpenAIChat:
@@ -163,7 +164,7 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 	// 解析模型返回的 JSON（兼容 markdown 包裹与前后缀文本）
 	var out imageAnalysisOutput
 	if err := parseImageAnalysisJSON(result.Text, &out); err != nil {
-		slog.Warn("json_object parse failed, retrying once", "err", err, "model", a.modelName, "channel", a.channel.ID)
+		slog.Warn("JSON parse failed, retrying once", "err", err, "model", a.modelName, "channel", a.channel.ID)
 		// 重试一次（不计入 maxRetries）
 		result2, err2 := goai.GenerateText(ctx, lm, opts...)
 		if err2 != nil {
@@ -175,9 +176,9 @@ func (a *goaiAnalyzer) AnalyzeImage(ctx context.Context, req *model.AnalyzeReque
 		result = result2
 	}
 
-	// 空内容兜底（DeepSeek json_object 偶发空 content）
+	// 空内容兜底（DeepSeek 等模型偶发返回空 content）
 	if out.Keywords == nil && out.Description == "" && out.Classification.Category == "" {
-		slog.Warn("json_object returned empty content, retrying once", "model", a.modelName, "channel", a.channel.ID)
+		slog.Warn("JSON output empty, retrying once", "model", a.modelName, "channel", a.channel.ID)
 		result2, err2 := goai.GenerateText(ctx, lm, opts...)
 		if err2 == nil {
 			var out2 imageAnalysisOutput

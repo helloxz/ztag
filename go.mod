@@ -12,7 +12,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/spf13/viper v1.21.0
-	github.com/zendev-sh/goai v0.9.7
+	github.com/zendev-sh/goai v0.11.0
 	golang.org/x/crypto v0.59.0
 	golang.org/x/image v0.48.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1

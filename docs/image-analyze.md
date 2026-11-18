@@ -29,14 +29,14 @@
 | `load_balance` | boolean | 否 | 仅当 `model` 为空时生效，`true` 时从 `default` 渠道随机选择一个模型；默认 `false` 取第一个 |
 
 > `image_url` 与 `image_base64` 至少提供一个，同时为空返回错误。
-> `model` 非空时必须含 `/`（如 `default/gpt-4o-mini`、`backup/claude-3-5-sonnet`、`default/openai/gpt-4o`），否则返回 `model must be in format "channel/model"`。
+> `model` 非空时必须含 `/`（如 `default/gpt-5.6-luna`、`default/gpt-5.4-mini`、`backup/claude-3-5-sonnet`），否则返回 `model must be in format "channel/model"`；其中 `backup` 渠道默认不启用，需先在配置中取消注释开启。
 
 请求示例：
 
 ```json
 {
   "image_url": "https://example.com/demo.jpg",
-  "model": "default/gpt-4o-mini"
+  "model": "default/gpt-5.6-luna"
 }
 ```
 ---
@@ -93,7 +93,7 @@ Authorization: Bearer <api_key>
       "risk_level": "low",
       "risk_reason": "未检测到敏感内容。"
     },
-    "model_id": "gpt-4o-mini",
+    "model_id": "gpt-5.6-luna",
     "elapsed_ms": 126
   }
 }
@@ -174,18 +174,18 @@ curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
   -H "Authorization: Bearer <your-api-key>" \
   -d '{"image_url":"https://example.com/demo.jpg"}'
 
-# base64 直传 + 指定模型（channel/model 格式）
+# base64 直传 + 指定模型（channel/model 格式；backup 渠道默认不启用，需先在配置中开启）
 curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
   -H "Content-Type: application/json" \
-  -d '{"image_base64":"<base64 内容>","model":"backup/claude-3-5-sonnet"}'
+  -d '{"image_base64":"<base64 内容>","model":"default/gpt-5.4-mini"}'
 ```
 ## 8. 行为说明
 
 - **模型选择**：`model="channel/modelId"`按第一个`/`切分校验，未传`model`时`load_balance=false`取`default`第一个，`load_balance=true`随机取`default`一个；`model`与`load_balance`互斥，`model`优先。
-- **主备切换**：`default`选中模型失败 → 随机选`backup`一个模型重试；`backup`显式指定失败 → 再随机选`backup`一个重试；仍失败返回 `AI analysis failed on both channels`。
+- **主备切换**：`default`选中模型失败 → 随机选`backup`一个模型重试；`backup`显式指定失败 → 再随机选`backup`一个重试；仍失败返回 `AI analysis failed on both channels`。`backup` 渠道默认不启用，仅配置 `default` 时失败会直接返回错误。
 - **耗时字段**：`elapsed_ms` 覆盖请求解析至分析完成的完整耗时；`mock` 模式下（本地联调）耗时通常接近 0。
 - **模型输出语言**：`keywords` / `description` / `risk_reason` 为简体中文；`category` / `risk_level` 为固定英文枚举。
-- **JSON 稳定性**：请求已启用结构化输出（`response_format=json_schema`）、低采样温度（`temperature=0.2`），并对偶发的截断解析失败自动重试一次。
+- **JSON 稳定性**：默认不发送采样参数（`temperature` / `top_p` = 0），结构化输出依赖系统提示词约束 + 分类白名单归一，并对偶发的截断/解析失败自动重试一次；接非推理模型（Qwen/DeepSeek 等）时可在配置中设置 `temperature` 0.1~0.2 提升稳定性。
 - **思考模式**：模型 id 命中内置关键词列表（如 `qwen`）时自动携带关闭思考参数；其余模型不传思考参数由模型决定。
 ## 9. 相关配置（data/config.toml）
 
@@ -194,6 +194,6 @@ curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
 | `[server]` | `addr` / `mode` | 监听地址与运行模式 |
 | `[auth]` | `enabled` / `api_keys` | 接口鉴权开关与 Key 列表 |
 | `[ai]` | `timeout` / `max_retries` / `max_image_bytes` | 超时 / 重试 / 图片大小上限 |
-| `[ai]` | `temperature` / `top_p` | 采样参数（输出稳定性） |
+| `[ai]` | `temperature` / `top_p` | 采样参数（0 = 不发送，默认 0；GPT-5 系列推理模型不接受，接非推理模型可设 0.1~0.2） |
 | `[ai]` | `mock` / `allow_private_urls` | 本地联调与 SSRF 放行开关 |
 | `[[ai.channels]]` | `id` / `type` / `base_url` / `api_key` / `models` | 主备渠道与模型配置 |

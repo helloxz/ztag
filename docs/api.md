@@ -28,13 +28,13 @@ X-API-Key: <api_key>
 |---|---|---|---|
 | `image_url` | string | 二选一 | 图片 HTTP(S) 地址，服务端下载 |
 | `image_base64` | string | 二选一 | 图片 base64（可带 `data:` 前缀） |
-| `model` | string | 否 | `channel/modelId`，channel 仅 `default` / `backup`，如 `default/gpt-4o-mini` |
+| `model` | string | 否 | `channel/modelId`，channel 仅 `default` / `backup`，如 `default/gpt-5.6-luna` |
 | `load_balance` | bool | 否 | `model` 为空时生效，`true` 从 `default` 随机选模型 |
 
 ```json
 {
   "image_url": "https://example.com/demo.jpg",
-  "model": "default/gpt-4o-mini"
+  "model": "default/gpt-5.6-luna"
 }
 ```
 
@@ -64,7 +64,7 @@ X-API-Key: <api_key>
       "risk_level": "low",
       "risk_reason": "未检测到敏感内容。"
     },
-    "model_id": "gpt-4o-mini",
+    "model_id": "gpt-5.6-luna",
     "elapsed_ms": 126
   }
 }

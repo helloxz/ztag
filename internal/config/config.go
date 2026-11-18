@@ -59,8 +59,8 @@ type AIConfig struct {
 	Mock                     bool            `mapstructure:"mock" toml:"mock" json:"mock"`                                                                   // 是否启用模拟 AI（本地无 API Key 联调用）
 	MaxImageBytes            int64           `mapstructure:"max_image_bytes" toml:"max_image_bytes" json:"max_image_bytes"`                                  // 图片大小上限（字节），默认 10MB
 	AllowPrivateURLs         bool            `mapstructure:"allow_private_urls" toml:"allow_private_urls" json:"allow_private_urls"`                         // 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）
-	Temperature              float64         `mapstructure:"temperature" toml:"temperature" json:"temperature"`                                              // 采样温度（0~2，越低输出越稳定，默认 0.2）
-	TopP                     float64         `mapstructure:"top_p" toml:"top_p" json:"top_p"`                                                                // 核采样（0~1，控制随机性，默认 0.9）
+	Temperature              float64         `mapstructure:"temperature" toml:"temperature" json:"temperature"`                                              // 采样温度（0~2，0 表示不发送，默认 0；GPT-5 系列等推理模型不接受该参数）
+	TopP                     float64         `mapstructure:"top_p" toml:"top_p" json:"top_p"`                                                                // 核采样（0~1，0 表示不发送，默认 0；与 temperature 建议二选一）
 	DisabledThinkingKeywords []string        `mapstructure:"disabled_thinking_keywords" toml:"disabled_thinking_keywords" json:"disabled_thinking_keywords"` // 命中即显式关闭思考的模型关键词列表（如 qwen/mimo/deepseek）
 	Channels                 []ChannelConfig `mapstructure:"channels" toml:"channels" json:"channels"`                                                       // 渠道列表（id 仅允许 default / backup）
 	Decision                 DecisionConfig  `mapstructure:"decision" toml:"decision" json:"decision"`                                                       // 场景决策模型（Gemini Decision 1 / Decisions API）
@@ -192,8 +192,8 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("ai.image_timeout", 30)
 	v.SetDefault("ai.max_retries", 2)
 	v.SetDefault("ai.max_image_bytes", DefaultMaxImageBytes)
-	v.SetDefault("ai.temperature", 0.2)
-	v.SetDefault("ai.top_p", 0.9)
+	v.SetDefault("ai.temperature", 0)
+	v.SetDefault("ai.top_p", 0)
 	v.SetDefault("ai.disabled_thinking_keywords", DefaultDisabledThinkingKeywords)
 	v.SetDefault("ai.decision.enabled", false)
 	v.SetDefault("ai.decision.timeout", DefaultDecisionTimeout)

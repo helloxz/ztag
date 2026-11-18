@@ -228,23 +228,26 @@ enabled = false          # 总开关：false 时两个决策接口都返回 deci
 timeout = 30             # 单次调用超时（秒），<=0 回退 30s
 max_text_chars = 4000    # 文本审核字符上限
 
+# 注意：启用总开关前，至少要把一个渠道的 enabled 改为 true，
+# 否则配置校验失败（ai.decision.channels must have at least one enabled channel）。
 [[ai.decision.channels]]
 id = "gemini-main"       # 渠道 id：调用时 model 填这个值；需唯一
 type = "gemini-decision" # gemini-decision | openai-decision
-enabled = true
+enabled = false          # 默认关闭，需要时改成 true
 base_url = "https://generativelanguage.googleapis.com"
 api_key = "your-gemini-api-key"
 model = "gemini-decision-1"
 resolution = "high"      # low | medium | high | ultra_high
 
-[[ai.decision.channels]]
-id = "openai-main"
-type = "openai-decision"
-enabled = true
-base_url = "https://ai-gateway.vercel.sh/v1"   # 实际请求 {base_url}/decisions
-api_key = "your-ai-gateway-key"
-model = "openai/gpt-6-luna-decisions"
-resolution = "high"      # 映射为 detail：low→low / medium→auto / high→high / ultra_high→original
+# 第二个渠道示例（默认注释）：需要多渠道轮询/兜底时取消注释
+# [[ai.decision.channels]]
+# id = "openai-main"
+# type = "openai-decision"
+# enabled = true
+# base_url = "https://ai-gateway.vercel.sh/v1"   # 实际请求 {base_url}/decisions
+# api_key = "your-ai-gateway-key"
+# model = "openai/gpt-6-luna-decisions"
+# resolution = "high"      # 映射为 detail：low→low / medium→auto / high→high / ultra_high→original
 ```
 
 路由与兜底：

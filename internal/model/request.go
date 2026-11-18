@@ -15,7 +15,7 @@ type ImageInput struct {
 // 后续如需支持 multipart 文件上传，可在该结构体上扩展 FormFile 字段。
 type AnalyzeRequest struct {
 	ImageInput
-	Model       string `json:"model"`        // 可选：格式为 "channel/modelId"（如 "default/gpt-4o-mini"），channel 仅允许 default/backup，modelId 可含斜杠；为空则由网关按负载均衡决定
+	Model       string `json:"model"`        // 可选：格式为 "channel/modelId"（如 "default/gpt-5.6-luna"），channel 仅允许 default/backup，modelId 可含斜杠；为空则由网关按负载均衡决定
 	LoadBalance bool   `json:"load_balance"` // 可选：仅当 Model 为空时生效，true 表示从 default 渠道中随机选择一个模型；与 Model 互斥，Model 优先
 
 	// 内部字段：由 service 层在下载/校验后填充，AI 网关据此构造图片消息，不参与对外 JSON
