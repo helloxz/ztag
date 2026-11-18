@@ -1,289 +1,116 @@
 # ZTAG
 
-基于大模型的图片内容识别服务：调用后端 AI 大模型识别图片内容，提取关键词与描述，并执行内容分类（色情、政治、血腥、暴力等），以统一 JSON API 的形式对外提供调用。
+基于大模型的图片内容识别与风险审核服务。通过统一 HTTP API 调用：
 
-## 技术栈
+- **图片分析**：提取关键词、描述，并输出内容分类与风险等级
+- **风险审核**：图片 / 文本场景分类，返回 0~100 风险评分
+- **多渠道模型**：支持 OpenAI、Anthropic 兼容接口，支持主备渠道切换
+- **Web 管理台**：在线配置渠道、API 密钥，并内置接口调试与 API 文档
 
-- 语言 / Web 框架：Go + [gin](https://github.com/gin-gonic/gin)
-  - 构建工具链锁定 `go1.27.4`（见 `go.mod` 的 `toolchain` 行），低于该版本会自动下载；不要降级，1.27.4 修复了 CVE-2026-111943（eMudhra 中间证书拒信）与 CVE-2026-97054（net/http MaxBytesReader 竞态崩溃）
-- 配置管理：[viper](https://github.com/spf13/viper)，配置格式 TOML
-- AI SDK：[github.com/zendev-sh/goai](https://github.com/zendev-sh/goai)（统一 SDK，一个接口对接 25+ 厂商）
-
-## 目录结构
-
-```
-ztag/
-├── cmd/server/main.go        # 程序入口：加载配置 → 构建依赖 → 启动服务
-├── internal/
-│   ├── config/               # 配置结构体 + viper 加载 + 校验（含内嵌默认模板）
-│   ├── router/               # ★ 路由统一集中注册
-│   ├── middleware/           # ★ 中间件：Recovery / AccessLog / Auth / RateLimit
-│   ├── handler/              # 表现层：参数解析、统一响应输出
-│   ├── service/              # 业务编排层：请求校验 → AI 网关调用
-│   ├── ai/                   # ★ AI 多远端网关：渠道选择、协议适配（mock 骨架）
-│   ├── model/                # 领域模型：请求体 / 响应体 / 业务错误码
-│   ├── helper/               # ★ 助手函数：统一响应封装、错误转换
-│   └── webui/                # 管理台前端资源（HTML/CSS/JS，go:embed 内嵌）
-├── data/                     # 运行时数据目录（自动生成，docker 挂载点）
-├── Makefile                  # build / run / tidy / vet / clean
-└── .gitignore
-```
-
-分层依赖方向：`router → handler → service → ai`，单向向下，禁止跨层调用。
-
-## 配置文件说明
-
-运行时配置位于 `data/config.toml`：
-
-- **首次启动自动生成**：若 `data/config.toml` 不存在，程序会自动把内嵌的默认模板拷贝到该路径；
-- **docker 部署**：只需把宿主目录挂载为容器的 `/data`（`-v /host/data:/app/data`），配置即可持久化；
-- 修改配置后需重启服务生效。
-
-### 主备双渠道配置
-
-固定两个渠道：`default`（默认/主渠道，必填）、`backup`（备用渠道，可选），每个渠道可配置多个模型（models 为模型标识字符串数组）：
-
-```toml
-[ai]
-timeout = 60
-max_retries = 2       # default 失败后切换/重试次数
-mock = false          # 模拟 AI（无 API Key 联调用）
-max_image_bytes = 10485760   # 图片大小上限（默认 10MB）
-allow_private_urls = false   # 放行内网图片 URL（SSRF 防护，仅本地联调用）
-temperature = 0.2            # 采样温度（越低输出越稳定，分类场景建议低值）
-top_p = 0.9                  # 核采样（控制随机性，0 表示不设置）
-
-[[ai.channels]]
-id = "default"                # 渠道唯一标识：default | backup
-type = "openai-chat"          # openai-chat | openai-response | anthropic
-base_url = "https://api.openai.com/v1"
-api_key = "sk-xxx"
-models = [
-  "gpt-4o-mini",
-  "gpt-4o",
-]
-
-[[ai.channels]]
-id = "backup"                 # 备用渠道（可整节删除）
-type = "anthropic"            # Anthropic 兼容渠道示例（如阿里云）
-base_url = "https://dashscope.aliyuncs.com/api/v2/apps/anthropic"
-api_key = "sk-xxx"
-models = [
-  "claude-3-5-sonnet",
-]
-```
-
-- 渠道 `id` 仅允许 `default` / `backup`（配置校验强制，default 必填、backup 可选）。
-- `type` 支持三种协议：`openai-chat`（OpenAI Chat Completions 兼容）、`openai-response`（OpenAI Responses 兼容）、`anthropic`（Anthropic Messages 兼容，含阿里云等兼容网关）。
-- 请求时通过 `model="channel/modelId"`（如 `default/gpt-4o-mini`、`backup/claude-3-5-sonnet`）指定，未传则走 `default` 第一个；`load_balance=true` 时随机选 `default` 一个（与 `model` 互斥，`model` 优先）；`default`失败随机切 `backup`，`backup`失败再随机重试。
-
-### 风险审核（决策模型）配置
-
-`POST /api/v1/image/decision`（图片）与 `POST /api/v1/text/decision`（文本）共用决策模型配置。决策模型只输出分类概率与风险评分、不生成文本，因此没有 keywords/description，也没有 temperature/top_p。
-
-支持配置**多个决策渠道**，两种协议可选：
-
-- `gemini-decision`：Gemini Decision 1（原生 Decisions API）
-- `openai-decision`：OpenAI 兼容 Decisions API（如 Vercel AI Gateway 的 `/v1/decisions`）
-
-```toml
-[ai.decision]
-enabled = false          # 总开关：false 时两个决策接口都返回 decision model is not configured
-timeout = 30             # 单次调用超时（秒），<=0 回退 30s
-max_text_chars = 4000    # 文本审核字符上限，超长直接报错
-
-[[ai.decision.channels]]
-id = "gemini-main"       # 渠道 id：调用时 model 填这个值；小写字母/数字/下划线/中划线，需唯一
-type = "gemini-decision"
-enabled = true
-base_url = "https://generativelanguage.googleapis.com" # 实际请求 {base_url}/v1beta/decisions
-api_key = "your-gemini-api-key"                        # x-goog-api-key
-model = "gemini-decision-1"
-resolution = "high"                                    # low | medium | high | ultra_high
-
-[[ai.decision.channels]]
-id = "openai-main"
-type = "openai-decision"
-enabled = true
-base_url = "https://ai-gateway.vercel.sh/v1"           # 实际请求 {base_url}/decisions
-api_key = "your-ai-gateway-key"                        # Authorization: Bearer
-model = "openai/gpt-6-luna-decisions"
-resolution = "high"                                    # openai 渠道映射为 detail：low→low / medium→auto / high→high / ultra_high→original
-```
-
-路由规则：
-
-- 请求体可用 `model` 指定渠道 id（如 `"model": "openai-main"`）；不指定则按配置顺序**轮询**；
-- 单个渠道失败时：还有其它渠道就换下一个再试一次，只有一个渠道就用它重试一次，仍失败则返回 `decision analysis failed`；
-- 模型拒答（refusal）与供应商安全拦截统一映射为 `blocked / 99`，极危拦截（`prohibited_content` / `blocklist`）映射为 `prohibited / 100`。
-
-## Web 管理台（/admin）
-
-浏览器访问 `http://<监听地址>/admin` 即可管理配置，无需手工编辑 `config.toml`：
-
-- **首次访问**：提示初始化管理员账号与密码（密码以 bcrypt 哈希存储），保存后自动登录；
-- **已初始化**：直接显示登录页，登录后进入管理页；
-- **可管理内容**：基础配置（监听地址、运行模式、AI 超时/图片下载超时/失败重试/图片大小上限）、图像分析（主力/备用渠道 default、backup + 关闭思考模式的关键词）、风险审核（决策渠道增删/启停，支持 gemini-decision 与 openai-decision 两种协议，含总开关/超时/文本长度上限）、对外 API 密钥（增删 + 鉴权开关）、管理员密码；
-- **仅支持改配置文件的项**：`ai.temperature`、`ai.top_p`、`ai.mock`、`ai.allow_private_urls` —— 管理台不展示，接口也不会覆盖，需要时直接改 `config.toml` 后重启；
-- **接口调试**：独立页面，可填图片 URL 或直接上传文件（前端转 base64），也可切换到文本审核直接粘贴文本；选择接口/渠道/鉴权后一键发送并查看真实返回；下方实时生成等价的 curl 命令，可复制到终端复现；
-- **写回方式**：按分区保存——「基础配置 / 图像分析 / 风险审核 / API 密钥」四个页面各自调用 `PUT /admin/api/config/{section}`，只提交并覆盖本分区的字段，其余分区不受影响；落盘时仍是整体重写 `data/config.toml`（覆盖式，不保留原文件注释），写前用同一套规则校验合并后的完整配置；文件权限收紧为 `0600`；
-- **生效方式**：除管理员账号/密码外，其余配置需**重启服务**生效（页面会提示「有改动待重启生效」）；
-- **重启服务**：右上角账号菜单 →「重启服务」，二次确认后进程优雅退出（退出码 0），由 Docker `restart: unless-stopped` 或 k8s 自动拉起；页面每 1 秒轮询 `/healthz` 的 `started_at`，检测到新实例后跳转登录页并提示。裸进程部署点击后会直接停止，请确认部署具备自动拉起能力；
-- **根路径**：`/` 是一个运行状态页（服务运行中 + 版本 + 项目地址，GitHub 链接带 `rel="nofollow"`），不暴露管理台入口；`/favicon.ico` 返回 204。
-
-页面资源（HTML/CSS/JS，含 [oat](https://oat.ink/) 的 `oat.min.css` / `oat.min.js`，MIT 协议）全部通过 `go:embed` 打进二进制：部署只需一个可执行文件，离线/内网环境同样可用（首次运行会在当前目录自建 `data/` 存放配置与日志）。
-
-## 快速开始
-
-```bash
-make run          # 或 go run ./cmd/server
-```
-
-### 前端调试（改完刷新即可，无需重启）
-
-管理台资源默认内嵌在二进制里；开发时用 `./scripts/dev.sh` 启动，脚本会自动设置 `ZTAG_WEB_DIR=internal/webui/web`，让服务直接读磁盘文件：
-
-```bash
-./scripts/dev.sh                       # 改 HTML/CSS/JS → 刷新浏览器即生效
-ZTAG_WEB_DIR= ./scripts/dev.sh         # 显式关闭，退回内嵌资源
-```
-
-- 仅开发用：不设置 `ZTAG_WEB_DIR` 时，发布二进制行为不变（资源仍然内嵌）；
-- 磁盘模式下响应带 `Cache-Control: no-store`，不需要 Ctrl+F5 清缓存；
-- 目录不存在会自动回退内嵌并在 `data/logs/` 记录一条 WARN，不会启动失败；
-- 改 `.go` 文件仍然需要重启（`./scripts/dev.sh` 会重新编译）。
-
-服务默认监听 `:18080`，启动后：
-
-```bash
-# 健康检查：返回 status / version / started_at（进程启动时间）
-curl http://127.0.0.1:18080/healthz
-
-# 图片分析（骨架阶段返回模拟结果）
-curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"image_url": "https://example.com/demo.jpg"}'
-
-# 风险审核（图片）：只返回场景分类与 0~100 风险评分
-curl -X POST http://127.0.0.1:18080/api/v1/image/decision \
-  -H "Content-Type: application/json" \
-  -d '{"image_url": "https://example.com/demo.jpg"}'
-
-# 风险审核（文本）：分类白名单与图片分开
-curl -X POST http://127.0.0.1:18080/api/v1/text/decision \
-  -H "Content-Type: application/json" \
-  -d '{"text": "加微信 xxx 领福利，稳赚不赔"}'
-
-# 两个接口都可用 model 指定决策渠道（渠道 id 见 ai.decision.channels）
-curl -X POST http://127.0.0.1:18080/api/v1/text/decision \
-  -H "Content-Type: application/json" \
-  -d '{"text": "……", "model": "openai-main"}'
-```
-
-风险审核返回：
-
-```json
-{ "code": 200, "msg": "", "data": { "category": "porn", "score": 87, "model_id": "gemini-main", "elapsed_ms": 312 } }
-```
-
-- `category`（图片）：`normal | porn | suggestive | gore | violence | politics | gambling | drugs | terror | other_risk`
-- `category`（文本）：`normal | spam | ads | porn | politics | abuse | fraud | illegal | other_risk`
-- 两者都额外可能出现 `blocked`（供应商拦截 / 模型拒答）与 `prohibited`（极危拦截），且**两套分类互不混用**
-- `score`：0~100 风险分（越大越危险）。自然判定与普通拦截上限都是 **99**；**100 只表示极危拦截**（`category = prohibited`，通常是 CSAM），可直接用来触发极危处置流程。详见 `docs/image-decision.md`
-- `model_id`：实际处理本次请求的决策渠道 id（轮询或指定后的真实渠道）
-- `elapsed_ms`：本次请求处理总耗时（毫秒，图片接口含下载/压缩；不含中间件）
-
-开启鉴权后需携带 API Key：
-
-```bash
-curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <data/config.toml 中配置的 key>" \
-  -d '{"image_url": "https://example.com/demo.jpg"}'
-```
-
-### 统一响应格式
-
-所有接口返回统一格式 `{ code, msg, data }`，`code = 200` 表示成功，失败一律 `code = -1000`（msg 携带英文原因）。图片分析返回 `keywords` / `description`（SEO 用途，中文）与 `classification`（分类明细）：
-
-```json
-{
-  "code": 200,
-  "msg": "",
-  "data": {
-    "keywords": ["自然风景", "蓝天", "白云"],
-    "description": "蓝天白云下的宁静自然风景。",
-    "classification": {
-      "category": "normal",
-      "score": 0.98,
-      "risk_level": "low",
-      "risk_reason": "未检测到敏感内容。"
-    },
-    "model_id": "gpt-4o-mini",
-    "elapsed_ms": 126
-  }
-}
-```
-
-- `keywords`：图片 SEO 关键词（3-5 个，中文）；`description`：SEO 描述（≤150 字，中文）
-- `classification.category`：图片类型，固定枚举 `normal | porn | suggestive | gore | violence | politics | gambling | drugs | terror | other_risk`（英文枚举值，不做翻译）
-- `classification.score`：该图片类型的匹配分数（0.0 ~ 1.0）
-- `classification.risk_level`：综合风险 `low | medium | high`；`risk_reason`：判定依据概述（中文，人工复审用）
-- `model_id`：实际处理该图的大模型标识（含主备切换后的真实模型）；`elapsed_ms`：本次请求处理总耗时（毫秒，含图片下载与 AI 调用）
-
-### 图片校验与预处理策略（图片分析 / 场景决策共用）
-
-请求经 `image_url`（或 `image_base64`）提交图片，后端对 URL 图片执行：
-
-1. **URL 格式校验**：必须为 http/https 且带主机名；
-2. **下载与头部校验**：单次 GET，读取 body 前先校验状态码、`Content-Length`（必须存在且 ≤ `ai.max_image_bytes`，默认 10MB）与 `Content-Type`（缺失时按 URL 后缀兜底），通过后才按上限读取内容；
-3. **SSRF 防护**：默认拦截内网/保留地址（`ai.allow_private_urls = true` 可放行，仅本地联调用）；
-4. **图片压缩**：下载后对 `image/jpeg`、`image/png`、`image/bmp` 解码并按需等比缩放（最长边超过 2048px 时缩小，宽高比不变），统一编码为 webp（quality 80）；静态 webp 输入同样等比缩放后重编码（动画 webp、gif、avif 原样透传）；处理失败自动回退原图，不阻断审核。图片处理链路为纯 Go 实现（[imaging](https://github.com/disintegration/imaging) 缩放 + [deepteams/webp](https://github.com/deepteams/webp) 编码），无 cgo/libvips 依赖；
-5. **传给 AI**：预处理完成（含 webp 转换）后以 base64 data URI 送大模型分析；两个接口共用同一并发信号量，总并发受 `server.workers` 限制。
-
-> 说明：webp 压缩降低的是传输体积；token 消耗主要取决于图片像素尺寸——预处理已将最长边限制在 2048px 以内（另设 4000 万总像素上限防解压炸弹），从源头控制了 token 与内存开销。
+---
 
 ## Docker 部署
 
-镜像由 GitHub Actions 在推送 `v*` tag 后自动构建，推送到 GHCR（仅 `linux/amd64`）：
+镜像：`ghcr.io/helloxz/ztag`（linux/amd64）
+
+### docker run
 
 ```bash
-# 拉取（首次使用若包仍为私有，需先在 GitHub Packages 设置中改为 public，或 docker login ghcr.io）
 docker pull ghcr.io/helloxz/ztag:latest
 
-# 运行（配置持久化到宿主机 ./data）
 docker run -d --name ztag -p 18080:18080 \
-  -v "$PWD/data:/app/data" -e TZ=Asia/Shanghai \
+  -v "$PWD/data:/app/data" \
+  -e TZ=Asia/Shanghai \
   ghcr.io/helloxz/ztag:latest
+```
 
-# 或直接使用仓库内 compose.yaml
+### Docker Compose（推荐）
+
+```bash
+# 创建目录
+mkdir ztag && cd ztag
+# 下载compose文件
+wget https://raw.githubusercontent.com/helloxz/ztag/refs/heads/main/compose.yaml
+# 启动
 docker compose up -d
 ```
 
-镜像 tag 跟随版本号：`v0.2.3` / `0.2.3` / `0.2` / `latest`（预发布版本不打 `latest`）。补推某个历史版本的镜像：Actions → `Release` → Run workflow，填入已存在的 tag。
+默认监听 `18080`。配置与日志保存在容器内 `/app/data`，挂载到宿主机后即可持久化（首次启动自动生成 `data/config.toml`）。
 
-本地构建（建议锁定版本，否则构建时会解析 GitHub 上最新的 release）：
+---
 
-```bash
-docker build --build-arg VERSION=v0.2.3 -t ztag:v0.2.3 .
+## Web 管理台快速上手
+
+部署完成后访问：
+
+```
+http://<服务器地址>:18080/admin
 ```
 
-## 中间件说明
+首次访问会引导创建管理员账号，登录后按以下步骤配置：
 
-| 中间件 | 作用 | 挂载范围 |
+### 1. 配置图像分析渠道
+
+进入「图像分析」，至少填写 `default` 渠道：
+
+| 字段 | 说明 |
+|---|---|
+| 协议类型 | `openai-chat` / `openai-response` / `anthropic` |
+| Base URL | 模型服务的接口地址 |
+| API Key | 对应服务的密钥 |
+| 模型列表 | 模型标识，可填多个 |
+
+> 备注：`backup` 渠道可选，用于主渠道失败时自动切换，请确保配置的模型支持多模态（图像输入），否则无法识别！
+
+### 2. 配置风险审核（可选）
+
+进入「风险审核」开启总开关，添加决策渠道：
+
+- `gemini-decision`：Gemini Decision API
+- `openai-decision`：OpenAI 兼容 Decisions API
+
+不配置时，图片分析接口仍可正常使用，风险审核接口会返回 `decision model is not configured`。
+
+### 3. 配置 API 密钥（可选）
+
+进入「API 密钥」开启鉴权并添加 Key。开启后调用 `/api/v1` 接口需携带：
+
+```
+Authorization: Bearer <api_key>
+# 或
+X-API-Key: <api_key>
+```
+
+### 4. 重启服务生效
+
+除管理员账号密码外，配置保存后需在右上角账号菜单点击「重启服务」生效。
+
+管理台还提供：
+
+- **接口调试**：直接填写图片 URL / 上传文件或输入文本，一键调用并查看真实返回
+- **API 文档**：左侧菜单查看完整接口字段说明
+
+---
+
+## API 文档
+
+所有对外接口位于 `/api/v1`：
+
+| 方法 | 路径 | 说明 |
 |---|---|---|
-| Recovery | panic 兜底，返回统一错误 | 全局 |
-| AccessLog | 请求访问日志 | 全局 |
-| Auth | API Key 鉴权（可配置开关） | /api/v1 |
-| RateLimit | 限流（当前占位透传，后续接入） | /api/v1 |
-| AdminSession | 管理台登录会话校验（Cookie，未登录返回 401） | /admin/api（需登录的接口） |
+| POST | `/api/v1/image/analyze` | 图片分析：关键词、描述、分类 |
+| POST | `/api/v1/image/decision` | 图片风险审核 |
+| POST | `/api/v1/text/decision` | 文本风险审核 |
 
-## 路线图（分阶段落地）
+完整的请求字段、响应结构、分类枚举与错误信息见：
 
-- [x] 骨架搭建：框架分层、路由/中间件/助手函数分离、hello world 可运行
-- [x] 图片识别接口：URL 校验 / header 探测（≤10MB、MIME、SSRF）/ 下载转 base64 / 主备切换 / goai 真实调用 / 二层分类结构化输出
-- [x] 风险审核接口：图片 + 文本两套分类，0~100 风险评分；多渠道决策模型（Gemini Decision 1 / OpenAI 兼容），按渠道轮询、失败换渠道重试；普通拦截与模型拒答映射 blocked/99，极危拦截映射 prohibited/100 并落 Error 日志
-- [x] Web 管理台（/admin）：管理员初始化/登录，在线管理配置、渠道、API 密钥并写回 config.toml
-- [ ] 端到端真实模型验证（配置 API Key 后）
-- [ ] 限流、容量与监控
-- [ ] 分类阈值（score 截断值）与风险等级策略可配置化
+- [API 文档](docs/api.md)
+- 或登录管理台后打开左侧「API 文档」
+
+所有接口返回统一格式：
+
+```json
+{ "code": 200, "msg": "", "data": {} }
+```
+
+成功 `code = 200`，失败 `code = -1000` 且 `msg` 为英文原因。
