@@ -235,7 +235,7 @@ id = "gemini-main"       # 渠道 id：调用时 model 填这个值；需唯一
 type = "gemini-decision" # gemini-decision | openai-decision
 enabled = false          # 默认关闭，需要时改成 true
 base_url = "https://generativelanguage.googleapis.com"
-api_key = "your-gemini-api-key"
+api_key = "your-gemini-api-key"   # 多个 Key 用 | 分隔，如 key1|key2，调用时随机选一个
 model = "gemini-decision-1"
 resolution = "high"      # low | medium | high | ultra_high
 
@@ -245,7 +245,7 @@ resolution = "high"      # low | medium | high | ultra_high
 # type = "openai-decision"
 # enabled = true
 # base_url = "https://ai-gateway.vercel.sh/v1"   # 实际请求 {base_url}/decisions
-# api_key = "your-ai-gateway-key"
+# api_key = "your-ai-gateway-key"   # 同样支持 key1|key2 多 Key 随机选择
 # model = "openai/gpt-6-luna-decisions"
 # resolution = "high"      # 映射为 detail：low→low / medium→auto / high→high / ultra_high→original
 ```

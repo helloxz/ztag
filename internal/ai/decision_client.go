@@ -109,7 +109,7 @@ func (e *DecisionBlockedError) Error() string {
 // 并发安全：内部只持有不可变的配置与 *http.Client，可被多个请求复用。
 type geminiDecisionClient struct {
 	endpoint   string
-	apiKey     string
+	keys       apiKeyPool // 多个 Key 用 "|" 分隔配置，每次调用随机取一个
 	model      string
 	resolution string
 	httpClient *http.Client
@@ -124,7 +124,7 @@ func newGeminiDecisionClient(ch config.DecisionChannelConfig, timeout time.Durat
 	}
 	return &geminiDecisionClient{
 		endpoint:   base + "/decisions",
-		apiKey:     ch.APIKey,
+		keys:       newAPIKeyPool(ch.APIKey),
 		model:      ch.Model,
 		resolution: ch.Resolution,
 		httpClient: &http.Client{Timeout: timeout},
@@ -237,7 +237,7 @@ func (c *geminiDecisionClient) call(
 		return nil, fmt.Errorf("build decision request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", c.apiKey)
+	req.Header.Set("x-goog-api-key", c.keys.pick())
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

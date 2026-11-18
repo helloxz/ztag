@@ -348,8 +348,8 @@
               <div data-field>
                 <label>图片来源</label>
                 <div class="radio-row">
-                  <label><input type="radio" name="test-src" value="url" checked> URL 地址</label>
-                  <label><input type="radio" name="test-src" value="file"> 上传文件</label>
+                  <label><input type="radio" name="test-src" value="file" checked> 上传文件</label>
+                  <label><input type="radio" name="test-src" value="url"> URL 地址</label>
                 </div>
               </div>
 
@@ -368,13 +368,13 @@
               <span data-hint>超过「风险审核」里配置的字符上限会直接报错</span>
             </div>
 
-            <div data-field id="test-url-field">
+            <div data-field id="test-url-field" hidden>
               <label for="test-url">图片 URL</label>
               <input id="test-url" placeholder="https://example.com/photo.jpg">
               <span data-hint>由服务端下载；内网地址默认会被 SSRF 防护拦截</span>
             </div>
 
-            <div data-field id="test-file-field" hidden>
+            <div data-field id="test-file-field">
               <label for="test-file">选择图片</label>
               <input id="test-file" type="file" accept="image/*">
               <span data-hint id="test-file-info">未选择文件</span>
@@ -1101,7 +1101,8 @@
         </div>
         <div data-field>
           <label>API Key</label>
-          <input data-field="api_key" aria-label="API Key" class="mono" autocomplete="off" spellcheck="false">
+          <input data-field="api_key" aria-label="API Key" class="mono" autocomplete="off" spellcheck="false" placeholder="多个用 | 分隔，如 key1|key2">
+          <span data-hint>多个 Key 用 | 分隔，每次调用随机选择一个；单 Key 直接填即可</span>
         </div>
         <div class="field-grid">
           <div data-field>
@@ -1416,7 +1417,7 @@
 
     function testSource() {
       const checked = document.querySelector('input[name=test-src]:checked');
-      return checked ? checked.value : 'url';
+      return checked ? checked.value : 'file';
     }
 
     function testDecisionMode() {

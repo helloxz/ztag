@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -88,6 +89,21 @@ type DecisionChannelConfig struct {
 	APIKey     string `mapstructure:"api_key" toml:"api_key" json:"api_key"`          // API Key
 	Model      string `mapstructure:"model" toml:"model" json:"model"`                // 上游模型标识
 	Resolution string `mapstructure:"resolution" toml:"resolution" json:"resolution"` // 图片分辨率档位（openai 渠道会映射为 detail）
+}
+
+// SplitAPIKeys 拆分渠道 api_key：支持多个 Key 用 "|" 分隔，两侧空白会被忽略。
+//
+// 空段直接丢弃（例如末尾多写一个 "|" 不受影响）；返回值只用于运行时取值，
+// 写回配置时仍保留用户填写的原始字符串。
+func SplitAPIKeys(raw string) []string {
+	parts := strings.Split(raw, "|")
+	keys := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if key := strings.TrimSpace(part); key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 // 决策模型默认值。
@@ -323,6 +339,10 @@ func (c *Config) Validate() error {
 			}
 			if ch.APIKey == "" {
 				return fmt.Errorf("decision channel %q api_key must not be empty", ch.ID)
+			}
+			// 多个 Key 用 "|" 分隔；全是空段（如 " | "）等价于没填
+			if len(SplitAPIKeys(ch.APIKey)) == 0 {
+				return fmt.Errorf("decision channel %q api_key must contain at least one non-empty key", ch.ID)
 			}
 			if ch.Model == "" {
 				return fmt.Errorf("decision channel %q model must not be empty", ch.ID)

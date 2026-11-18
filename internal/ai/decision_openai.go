@@ -96,7 +96,7 @@ type openAIAPIError struct {
 // 并发安全：内部只持有不可变的配置与 *http.Client，可被多个请求复用。
 type openAIDecisionClient struct {
 	endpoint   string
-	apiKey     string
+	keys       apiKeyPool // 多个 Key 用 "|" 分隔配置，每次调用随机取一个
 	model      string
 	detail     string
 	httpClient *http.Client
@@ -107,7 +107,7 @@ func newOpenAIDecisionClient(ch config.DecisionChannelConfig, timeout time.Durat
 	base := strings.TrimRight(strings.TrimSpace(ch.BaseURL), "/")
 	return &openAIDecisionClient{
 		endpoint:   base + "/decisions",
-		apiKey:     ch.APIKey,
+		keys:       newAPIKeyPool(ch.APIKey),
 		model:      ch.Model,
 		detail:     openAIDetail(ch.Resolution),
 		httpClient: &http.Client{Timeout: timeout},
@@ -260,7 +260,7 @@ func (c *openAIDecisionClient) call(
 		return nil, fmt.Errorf("build decision request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Authorization", "Bearer "+c.keys.pick())
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

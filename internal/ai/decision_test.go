@@ -27,6 +27,12 @@ func testImage() *model.PreparedImage {
 // newTestGateway 用 httptest 搭建单渠道网关，避免真实网络调用。
 func newTestGateway(t *testing.T, channelType string, handler http.HandlerFunc) *DecisionGateway {
 	t.Helper()
+	return newTestGatewayWithKey(t, channelType, "test-key", handler)
+}
+
+// newTestGatewayWithKey 同 newTestGateway，但可指定渠道的 api_key（用于多 Key 场景）。
+func newTestGatewayWithKey(t *testing.T, channelType, apiKey string, handler http.HandlerFunc) *DecisionGateway {
+	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
@@ -40,7 +46,7 @@ func newTestGateway(t *testing.T, channelType string, handler http.HandlerFunc) 
 				Type:       channelType,
 				Enabled:    true,
 				BaseURL:    srv.URL,
-				APIKey:     "test-key",
+				APIKey:     apiKey,
 				Model:      "test-model",
 				Resolution: config.DecisionResolutionHigh,
 			}},
