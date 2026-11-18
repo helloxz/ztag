@@ -22,6 +22,8 @@
           <li><a href="#decision" data-section="decision">风险审核</a></li>
           <li><a href="#key" data-section="key">API 密钥</a></li>
           <li><a href="#test" data-section="test">接口调试</a></li>
+          <li><a href="#docs" data-section="docs">API 文档</a></li>
+          <li><a href="#more" data-section="more">其它</a></li>
           <li><a href="#account" data-section="account">账号</a></li>
         </ul>
       </nav>
@@ -287,7 +289,7 @@
               <span class="spacer"></span>
               <label class="switch-row"><input type="checkbox" role="switch" id="auth-enabled"> 开启</label>
             </header>
-            <p class="hint">请求头携带 <code>Authorization: Bearer &lt;key&gt;</code> 或 <code>X-API-Key</code>；修改需重启服务生效。</p>
+            <p class="hint">请求头携带 <code>Authorization: Bearer &lt;key&gt;</code> 或 <code>X-API-Key</code>；修改需重启服务生效。 <a href="#docs">查看 API 文档 →</a></p>
 
             <div class="table mt-4">
               <table>
@@ -315,6 +317,7 @@
         <section id="panel-test" hidden>
           <p class="page-intro">
             在这里直接调用对外接口：选择接口与图片来源，点「发送请求」即可看到真实返回；下方 curl 与页面发送的是同一份请求体，可直接复制到终端复现。
+            字段与错误说明见 <a href="#docs">API 文档 →</a>
           </p>
 
           <section class="card">
@@ -445,6 +448,98 @@
           </section>
         </section>
 
+        <!-- API 文档 -->
+        <section id="panel-docs" hidden>
+          <p class="page-intro">
+            内容来自仓库 <code>docs/api.md</code>，服务端缓存 24 小时。
+            <a href="https://github.com/helloxz/ztag/blob/main/docs/api.md" target="_blank" rel="noopener">在 GitHub 查看 →</a>
+          </p>
+
+          <section class="card">
+            <header class="card-head">
+              <h3>API 文档</h3>
+              <span class="spacer"></span>
+              <span class="hint" id="docs-meta"></span>
+            </header>
+
+            <article class="docs-body" id="docs-body">
+              <p class="hint">正在加载文档…</p>
+            </article>
+
+            <div class="docs-error" id="docs-error" hidden>
+              <p class="hint" id="docs-error-text"></p>
+              <button type="button" data-variant="secondary" id="docs-retry">重新加载</button>
+            </div>
+          </section>
+        </section>
+
+        <!-- 其它产品 / 关注作者 -->
+        <section id="panel-more" hidden>
+          <section class="card">
+            <header class="card-head"><h3>其它产品</h3></header>
+            <div class="link-grid">
+              <a class="link-card" href="https://rss.bz/zh" target="_blank" rel="noopener">
+                <span class="link-card-head">
+                  <strong>AI 情报局</strong>
+                  <span class="link-card-arrow" aria-hidden="true">↗</span>
+                </span>
+                <span class="link-card-desc">每天追踪 OpenAI、Anthropic、Google 等 AI 动态，整理成中文简报，支持 RSS 与 Telegram 订阅。</span>
+                <span class="link-card-host">rss.bz</span>
+              </a>
+
+              <a class="link-card" href="https://www.imgurl.org/" target="_blank" rel="noopener">
+                <span class="link-card-head">
+                  <strong>ImgURL 图床</strong>
+                  <span class="link-card-arrow" aria-hidden="true">↗</span>
+                </span>
+                <span class="link-card-desc">稳定免费的图片托管服务，上传即得外链，适合博客、电商与开发者使用。</span>
+                <span class="link-card-host">imgurl.org</span>
+              </a>
+
+              <a class="link-card" href="https://tcp.lc/zh" target="_blank" rel="noopener">
+                <span class="link-card-head">
+                  <strong>TCPLab 网络工具箱</strong>
+                  <span class="link-card-arrow" aria-hidden="true">↗</span>
+                </span>
+                <span class="link-card-desc">IP 查询、DNS 解析、HTTP 响应检测与 TCP 端口测试，浏览器内即开即用。</span>
+                <span class="link-card-host">tcp.lc</span>
+              </a>
+
+              <a class="link-card" href="https://txtdock.com/zh" target="_blank" rel="noopener">
+                <span class="link-card-head">
+                  <strong>TxtDock 文本工具箱</strong>
+                  <span class="link-card-arrow" aria-hidden="true">↗</span>
+                </span>
+                <span class="link-card-desc">大小写转换、HTML 转 Markdown、Base64、URL 编码、JSON 格式化等常用文本工具。</span>
+                <span class="link-card-host">txtdock.com</span>
+              </a>
+            </div>
+          </section>
+
+          <section class="card">
+            <header class="card-head"><h3>关注作者</h3></header>
+            <div class="link-grid">
+              <a class="link-card" href="https://blog.xiaoz.org" target="_blank" rel="noopener">
+                <span class="link-card-head">
+                  <strong>博客</strong>
+                  <span class="link-card-arrow" aria-hidden="true">↗</span>
+                </span>
+                <span class="link-card-desc">技术、折腾与生活记录。</span>
+                <span class="link-card-host">blog.xiaoz.org</span>
+              </a>
+
+              <a class="link-card" href="https://x.com/xiaozblog" target="_blank" rel="noopener">
+                <span class="link-card-head">
+                  <strong>X</strong>
+                  <span class="link-card-arrow" aria-hidden="true">↗</span>
+                </span>
+                <span class="link-card-desc">在 X 上关注作者的日常分享。</span>
+                <span class="link-card-host">@xiaozblog</span>
+              </a>
+            </div>
+          </section>
+        </section>
+
         <!-- 账号 -->
         <section id="panel-account" hidden>
           <section class="card">
@@ -518,6 +613,8 @@
     </div>
   </div>
 
+  <script src="/admin/assets/marked.min.js"></script>
+  <script src="/admin/assets/purify.min.js"></script>
   <script src="/admin/assets/app.js"></script>
   <script>
     // 页面分区：hash 名 → 顶栏标题
@@ -527,6 +624,8 @@
       decision: '风险审核',
       key: 'API 密钥',
       test: '接口调试',
+      docs: 'API 文档',
+      more: '其它产品',
       account: '账号',
     };
 
@@ -535,6 +634,8 @@
     const DIRTY = { base: false, channel: false, decision: false, key: false };
     let cfg = null;
     let apiKeys = [];
+    let docsLoaded = false;
+    let docsLoading = false;
 
     // 取值小工具
     const val = (id) => $(id).value.trim();
@@ -714,14 +815,15 @@
 
       $('page-title').textContent = SECTIONS[name];
 
-      // 账号页没有配置保存动作；其它分区还有未保存改动时给出提示
-      const noSave = name === 'account' || name === 'test';
+      // 账号、接口调试、API 文档、其它产品没有配置保存动作；其它分区还有未保存改动时给出提示
+      const noSave = name === 'account' || name === 'test' || name === 'docs' || name === 'more';
       showMsg($('msg'), '');
       $('save-bar').hidden = noSave;
       if (noSave && dirtySections().length) {
         showMsg($('msg'), '还有未保存的配置改动：' + dirtySections().join('、') + '，请回到对应页面保存。', 'warning');
       }
       if (name === 'test') updateTestState();
+      if (name === 'docs') loadDocs();
       renderDirtyState();
 
       // 切分区时回到内容顶部，避免停在上一页的滚动位置
@@ -730,6 +832,94 @@
       // 移动端点击导航后收起抽屉
       if (window.matchMedia('(max-width: 768px)').matches) {
         $('layout').removeAttribute('data-sidebar-open');
+      }
+    }
+
+    // docsSlug 生成文档标题锚点 id（保留中文、字母、数字与连字符）。
+    function docsSlug(text) {
+      return String(text || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^\w\u4e00-\u9fa5-]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'section';
+    }
+
+    // enhanceDocs 对渲染结果做展示增强：表格横向滚动、标题锚点、外链新窗口。
+    function enhanceDocs(root) {
+      root.querySelectorAll('table').forEach((table) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'docs-table-wrap';
+        table.parentNode.insertBefore(wrap, table);
+        wrap.appendChild(table);
+      });
+
+      const used = new Set();
+      root.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading) => {
+        if (heading.id) {
+          used.add(heading.id);
+          return;
+        }
+        const base = 'doc-' + docsSlug(heading.textContent);
+        let id = base;
+        let n = 1;
+        while (used.has(id)) id = base + '-' + (++n);
+        used.add(id);
+        heading.id = id;
+      });
+
+      root.querySelectorAll('a').forEach((a) => {
+        const href = a.getAttribute('href') || '';
+        if (href.startsWith('#')) {
+          // 文档内锚点不修改 location.hash，避免触发管理台分区切换
+          a.addEventListener('click', (e) => {
+            e.preventDefault();
+            const id = decodeURIComponent(href.slice(1));
+            const target = Array.from(root.querySelectorAll('[id]')).find((el) => el.id === id);
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+          return;
+        }
+        if (/^https?:\/\//i.test(href)) {
+          a.target = '_blank';
+          a.rel = 'noopener';
+        }
+      });
+    }
+
+    // loadDocs 首次进入文档页时加载，之后复用页面内缓存；force 用于失败重试。
+    async function loadDocs(force) {
+      if (docsLoading || (docsLoaded && !force)) return;
+
+      docsLoading = true;
+      $('docs-error').hidden = true;
+      $('docs-body').hidden = false;
+      $('docs-body').setAttribute('aria-busy', 'true');
+      if (!docsLoaded) {
+        $('docs-body').innerHTML = '<p class="hint">正在加载文档…</p>';
+      }
+
+      try {
+        if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+          throw new Error('文档渲染组件加载失败，请刷新页面');
+        }
+        const data = await apiCall('/admin/api/docs');
+        const html = marked.parse(data.content || '', { gfm: true, breaks: false });
+        $('docs-body').innerHTML = DOMPurify.sanitize(html);
+        enhanceDocs($('docs-body'));
+        docsLoaded = true;
+
+        const time = data.fetched_at ? new Date(data.fetched_at * 1000).toLocaleString() : '';
+        $('docs-meta').textContent = data.stale
+          ? '内容更新失败，显示上次缓存' + (time ? ' · ' + time : '')
+          : (time ? '缓存于 ' + time : '');
+      } catch (err) {
+        $('docs-body').hidden = true;
+        $('docs-error').hidden = false;
+        $('docs-error-text').textContent = err.message || '加载失败';
+        $('docs-meta').textContent = '';
+      } finally {
+        docsLoading = false;
+        $('docs-body').removeAttribute('aria-busy');
       }
     }
 
@@ -1070,6 +1260,9 @@
     $('auth-enabled').addEventListener('change', toggleAuthBadge);
 
     $('save-btn').addEventListener('click', save);
+
+    // API 文档：加载失败后重试
+    $('docs-retry').addEventListener('click', () => loadDocs(true));
 
 
     // 风险审核：添加 / 删除渠道

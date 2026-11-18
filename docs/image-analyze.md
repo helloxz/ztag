@@ -159,23 +159,23 @@ Authorization: Bearer <api_key>
 
 ```bash
 # 匿名调用（auth.enabled = false）
-curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
+curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
   -H "Content-Type: application/json" \
   -d '{"image_url":"https://example.com/demo.jpg"}'
 
 # 负载均衡（随机选 default 中一个模型）
-curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
+curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
   -H "Content-Type: application/json" \
   -d '{"image_url":"https://example.com/demo.jpg","load_balance":true}'
 
 # 鉴权调用（auth.enabled = true）
-curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
+curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <your-api-key>" \
   -d '{"image_url":"https://example.com/demo.jpg"}'
 
 # base64 直传 + 指定模型（channel/model 格式）
-curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
+curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
   -H "Content-Type: application/json" \
   -d '{"image_base64":"<base64 内容>","model":"backup/claude-3-5-sonnet"}'
 ```

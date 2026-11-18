@@ -22,13 +22,14 @@ import (
 // 业务逻辑全部在 service.AdminService，这里只做参数解析、Cookie 下发与响应封装。
 type AdminHandler struct {
 	svc        *service.AdminService
+	docs       *service.DocsService
 	restart    func()      // 触发进程优雅退出（由 main 注入，退出后由容器编排拉起）
 	restarting atomic.Bool // 防止并发重复重启
 }
 
 // NewAdminHandler 构建管理台处理器。restart 为空表示当前运行环境不支持重启。
-func NewAdminHandler(svc *service.AdminService, restart func()) *AdminHandler {
-	return &AdminHandler{svc: svc, restart: restart}
+func NewAdminHandler(svc *service.AdminService, docs *service.DocsService, restart func()) *AdminHandler {
+	return &AdminHandler{svc: svc, docs: docs, restart: restart}
 }
 
 // ValidSession 供管理台会话中间件复用（避免中间件反向依赖 service 包）。
@@ -166,6 +167,23 @@ func (h *AdminHandler) Logout(c *gin.Context) {
 // GetConfig 处理 GET /admin/api/config：返回当前配置（密码哈希不外发）。
 func (h *AdminHandler) GetConfig(c *gin.Context) {
 	helper.OK(c, h.svc.Config())
+}
+
+// Docs 处理 GET /admin/api/docs：返回缓存后的 API 文档 Markdown。
+// 文档抓取与 24 小时缓存由 service.DocsService 负责。
+func (h *AdminHandler) Docs(c *gin.Context) {
+	if h.docs == nil {
+		helper.Fail(c, "API docs service is not configured")
+		return
+	}
+	doc, err := h.docs.Get(c.Request.Context())
+	if err != nil {
+		helper.FailWithError(c, err)
+		return
+	}
+	// 缓存由服务端管理，禁止浏览器再缓存一份
+	c.Header("Cache-Control", "no-store")
+	helper.OK(c, doc)
 }
 
 // SaveBase 处理 PUT /admin/api/config/base：只保存基础配置分区。

@@ -192,27 +192,27 @@ Authorization: Bearer <api_key>
 
 ```bash
 # 图片：URL 方式
-curl -X POST http://127.0.0.1:8080/api/v1/image/decision \
+curl -X POST http://127.0.0.1:18080/api/v1/image/decision \
   -H "Content-Type: application/json" \
   -d '{"image_url":"https://example.com/demo.jpg"}'
 
 # 图片：base64 方式
-curl -X POST http://127.0.0.1:8080/api/v1/image/decision \
+curl -X POST http://127.0.0.1:18080/api/v1/image/decision \
   -H "Content-Type: application/json" \
   -d '{"image_base64":"<base64 内容>"}'
 
 # 文本：不指定渠道（轮询）
-curl -X POST http://127.0.0.1:8080/api/v1/text/decision \
+curl -X POST http://127.0.0.1:18080/api/v1/text/decision \
   -H "Content-Type: application/json" \
   -d '{"text":"加微信 xxx 领福利，稳赚不赔"}'
 
 # 文本：指定决策渠道
-curl -X POST http://127.0.0.1:8080/api/v1/text/decision \
+curl -X POST http://127.0.0.1:18080/api/v1/text/decision \
   -H "Content-Type: application/json" \
   -d '{"text":"……","model":"openai-main"}'
 
 # 开启鉴权后
-curl -X POST http://127.0.0.1:8080/api/v1/image/decision \
+curl -X POST http://127.0.0.1:18080/api/v1/image/decision \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <your-api-key>" \
   -d '{"image_url":"https://example.com/demo.jpg"}'

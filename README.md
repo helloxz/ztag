@@ -153,29 +153,29 @@ ZTAG_WEB_DIR= ./scripts/dev.sh         # 显式关闭，退回内嵌资源
 - 目录不存在会自动回退内嵌并在 `data/logs/` 记录一条 WARN，不会启动失败；
 - 改 `.go` 文件仍然需要重启（`./scripts/dev.sh` 会重新编译）。
 
-服务默认监听 `:8080`，启动后：
+服务默认监听 `:18080`，启动后：
 
 ```bash
 # 健康检查：返回 status / version / started_at（进程启动时间）
-curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:18080/healthz
 
 # 图片分析（骨架阶段返回模拟结果）
-curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
+curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
   -H "Content-Type: application/json" \
   -d '{"image_url": "https://example.com/demo.jpg"}'
 
 # 风险审核（图片）：只返回场景分类与 0~100 风险评分
-curl -X POST http://127.0.0.1:8080/api/v1/image/decision \
+curl -X POST http://127.0.0.1:18080/api/v1/image/decision \
   -H "Content-Type: application/json" \
   -d '{"image_url": "https://example.com/demo.jpg"}'
 
 # 风险审核（文本）：分类白名单与图片分开
-curl -X POST http://127.0.0.1:8080/api/v1/text/decision \
+curl -X POST http://127.0.0.1:18080/api/v1/text/decision \
   -H "Content-Type: application/json" \
   -d '{"text": "加微信 xxx 领福利，稳赚不赔"}'
 
 # 两个接口都可用 model 指定决策渠道（渠道 id 见 ai.decision.channels）
-curl -X POST http://127.0.0.1:8080/api/v1/text/decision \
+curl -X POST http://127.0.0.1:18080/api/v1/text/decision \
   -H "Content-Type: application/json" \
   -d '{"text": "……", "model": "openai-main"}'
 ```
@@ -196,7 +196,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/text/decision \
 开启鉴权后需携带 API Key：
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
+curl -X POST http://127.0.0.1:18080/api/v1/image/analyze \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <data/config.toml 中配置的 key>" \
   -d '{"image_url": "https://example.com/demo.jpg"}'

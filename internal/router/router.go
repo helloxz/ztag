@@ -89,6 +89,8 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 			authed := api.Group("", middleware.AdminSession(hs.Admin.ValidSession))
 			authed.POST("/logout", hs.Admin.Logout)
 			authed.GET("/config", hs.Admin.GetConfig)
+			// API 文档：服务端抓取并缓存 24 小时
+			authed.GET("/docs", hs.Admin.Docs)
 			// 按分区保存：只覆盖本分区的字段，其余配置保持不变
 			authed.PUT("/config/base", hs.Admin.SaveBase)
 			authed.PUT("/config/channel", hs.Admin.SaveChannels)

@@ -101,7 +101,7 @@ func main() {
 		Home:     handler.NewHomeHandler(),
 		Image:    handler.NewImageHandler(imageSvc, maxRequestBody),
 		Decision: handler.NewDecisionHandler(decisionSvc, maxRequestBody),
-		Admin: handler.NewAdminHandler(service.NewAdminService(cfg, cfgPath), func() {
+		Admin: handler.NewAdminHandler(service.NewAdminService(cfg, cfgPath), service.NewDocsService(), func() {
 			select {
 			case restartCh <- struct{}{}:
 			default: // 已有待处理的重启请求
