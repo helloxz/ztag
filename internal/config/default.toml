@@ -72,3 +72,11 @@ api_key = "replace-with-your-gemini-api-key"           # 请求头 x-goog-api-ke
 model = "gemini-decision-1"                            # 模型标识
 resolution = "high"                                    # 图片分辨率：low | medium | high | ultra_high
 timeout = 30                                           # 单次调用超时（秒），<=0 回退 30s
+
+# ---------------- Web 管理台管理员账号 ----------------
+# 访问 http://<addr>/admin 可在线管理配置、渠道与 API 密钥。
+# 首次访问会引导初始化账号，初始化后由管理台自动写回本段；
+# password_hash 为 bcrypt 哈希（不可逆），请勿手工填写明文密码。
+[admin]
+username = ""        # 管理员用户名，留空表示未初始化
+password_hash = ""   # 密码哈希（bcrypt），留空表示未初始化

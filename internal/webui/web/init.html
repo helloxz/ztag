@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>初始化管理员 · ZTAG</title>
+  <link rel="stylesheet" href="/admin/assets/oat.min.css">
+  <link rel="stylesheet" href="/admin/assets/app.css">
+  <script src="/admin/assets/oat.min.js" defer></script>
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-stack">
+      <h1 class="auth-title">初始化管理员</h1>
+
+      <div class="card auth-card">
+        <div id="msg" role="alert" hidden></div>
+
+        <form id="init-form">
+          <div data-field>
+            <label for="username">用户名</label>
+            <input id="username" name="username" autocomplete="username" required>
+          </div>
+          <div data-field>
+            <label for="password">密码</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" minlength="6" required placeholder="至少 6 位">
+          </div>
+          <div data-field>
+            <label for="confirm">确认密码</label>
+            <input id="confirm" type="password" autocomplete="new-password" required>
+          </div>
+          <button type="submit" class="w-100">完成初始化</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin/assets/app.js"></script>
+  <script>
+    const form = $('init-form');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = $('username').value.trim();
+      const password = $('password').value;
+      if (password !== $('confirm').value) {
+        showMsg($('msg'), '两次输入的密码不一致');
+        return;
+      }
+      try {
+        await apiCall('/admin/api/init', { method: 'POST', body: { username, password } });
+        window.location.href = '/admin';
+      } catch (err) {
+        showMsg($('msg'), err.message);
+      }
+    });
+  </script>
+</body>
+</html>

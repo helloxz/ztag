@@ -22,7 +22,8 @@ ztag/
 │   ├── service/              # 业务编排层：请求校验 → AI 网关调用
 │   ├── ai/                   # ★ AI 多远端网关：渠道选择、协议适配（mock 骨架）
 │   ├── model/                # 领域模型：请求体 / 响应体 / 业务错误码
-│   └── helper/               # ★ 助手函数：统一响应封装、错误转换
+│   ├── helper/               # ★ 助手函数：统一响应封装、错误转换
+│   └── webui/                # 管理台前端资源（HTML/CSS/JS，go:embed 内嵌）
 ├── data/                     # 运行时数据目录（自动生成，docker 挂载点）
 ├── Makefile                  # build / run / tidy / vet / clean
 └── .gitignore
@@ -92,11 +93,38 @@ timeout = 30                                           # 单次调用超时（�
 
 > 旧部署的 `data/config.toml` 不会被自动改写，需手工补上该段后重启；缺失时仅该接口不可用。
 
+## Web 管理台（/admin）
+
+浏览器访问 `http://<监听地址>/admin` 即可管理配置，无需手工编辑 `config.toml`：
+
+- **首次访问**：提示初始化管理员账号与密码（密码以 bcrypt 哈希存储），保存后自动登录；
+- **已初始化**：直接显示登录页，登录后进入管理页；
+- **可管理内容**：基础配置（监听地址、运行模式、AI 超时/重试/温度等）、图像审核（主力/备用渠道 default、backup）、风险审核（决策模型）、对外 API 密钥（增删 + 鉴权开关）、管理员密码；
+- **接口调试**：独立页面，可填图片 URL 或直接上传文件（前端转 base64），选择接口/模型/鉴权后一键发送并查看真实返回；下方实时生成等价的 curl 命令，可复制到终端复现；
+- **写回方式**：按分区保存——「基础配置 / 图像审核 / 风险审核 / API 密钥」四个页面各自调用 `PUT /admin/api/config/{section}`，只提交并覆盖本分区的字段，其余分区不受影响；落盘时仍是整体重写 `data/config.toml`（覆盖式，不保留原文件注释），写前用同一套规则校验合并后的完整配置；文件权限收紧为 `0600`；
+- **生效方式**：除管理员账号/密码外，其余配置需**重启服务**生效（页面会提示「有改动待重启生效」）。
+
+页面资源（HTML/CSS/JS，含 [oat](https://oat.ink/) 的 `oat.min.css` / `oat.min.js`，MIT 协议）全部通过 `go:embed` 打进二进制：部署只需一个可执行文件，离线/内网环境同样可用（首次运行会在当前目录自建 `data/` 存放配置与日志）。
+
 ## 快速开始
 
 ```bash
 make run          # 或 go run ./cmd/server
 ```
+
+### 前端调试（改完刷新即可，无需重启）
+
+管理台资源默认内嵌在二进制里；开发时用 `./scripts/dev.sh` 启动，脚本会自动设置 `ZTAG_WEB_DIR=internal/webui/web`，让服务直接读磁盘文件：
+
+```bash
+./scripts/dev.sh                       # 改 HTML/CSS/JS → 刷新浏览器即生效
+ZTAG_WEB_DIR= ./scripts/dev.sh         # 显式关闭，退回内嵌资源
+```
+
+- 仅开发用：不设置 `ZTAG_WEB_DIR` 时，发布二进制行为不变（资源仍然内嵌）；
+- 磁盘模式下响应带 `Cache-Control: no-store`，不需要 Ctrl+F5 清缓存；
+- 目录不存在会自动回退内嵌并在 `data/logs/` 记录一条 WARN，不会启动失败；
+- 改 `.go` 文件仍然需要重启（`./scripts/dev.sh` 会重新编译）。
 
 服务默认监听 `:8080`，启动后：
 
@@ -208,12 +236,14 @@ docker build --build-arg VERSION=v0.2.3 -t ztag:v0.2.3 .
 | AccessLog | 请求访问日志 | 全局 |
 | Auth | API Key 鉴权（可配置开关） | /api/v1 |
 | RateLimit | 限流（当前占位透传，后续接入） | /api/v1 |
+| AdminSession | 管理台登录会话校验（Cookie，未登录返回 401） | /admin/api（需登录的接口） |
 
 ## 路线图（分阶段落地）
 
 - [x] 骨架搭建：框架分层、路由/中间件/助手函数分离、hello world 可运行
 - [x] 图片识别接口：URL 校验 / header 探测（≤10MB、MIME、SSRF）/ 下载转 base64 / 主备切换 / goai 真实调用 / 二层分类结构化输出
 - [x] 场景决策接口：Gemini Decision 1（Decisions API）场景分类 + 0~100 风险评分；普通安全拦截映射 blocked/99，极危拦截（prohibited_content/blocklist）映射 prohibited/100 并落 Error 日志
+- [x] Web 管理台（/admin）：管理员初始化/登录，在线管理配置、渠道、API 密钥并写回 config.toml
 - [ ] 端到端真实模型验证（配置 API Key 后）
 - [ ] 限流、容量与监控
 - [ ] 分类阈值（score 截断值）与风险等级策略可配置化

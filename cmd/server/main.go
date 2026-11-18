@@ -27,6 +27,7 @@ import (
 	"github.com/helloxz/ztag/internal/router"
 	"github.com/helloxz/ztag/internal/service"
 	"github.com/helloxz/ztag/internal/version"
+	"github.com/helloxz/ztag/internal/webui"
 )
 
 func main() {
@@ -67,6 +68,20 @@ func main() {
 		slog.Info("logger initialized", "dir", logger.DefaultLogDir, "level", cfg.Log.Level, "retain_days", logger.RetainDays)
 	}
 
+	// ---------- 2.2 管理台静态资源来源 ----------
+	// 默认使用内嵌资源（发布物只需一个二进制）；开发时设置 ZTAG_WEB_DIR
+	// 指向 internal/webui/web，改完页面刷新即可生效，无需重启服务。
+	if webDir := os.Getenv("ZTAG_WEB_DIR"); webDir != "" {
+		if err := webui.UseDir(webDir); err != nil {
+			slog.Warn("failed to serve admin assets from disk, using embedded assets",
+				"dir", webDir, "err", err)
+		} else {
+			slog.Info("admin assets served from disk", "dir", webDir)
+		}
+	} else {
+		slog.Info("admin assets served from embedded binary")
+	}
+
 	// ---------- 3. 构建核心依赖（由下至上） ----------
 	// AI 多渠道网关 / 场景决策分析器 → 共享图片预处理器 → 各业务 service → 各 handler
 	gateway := ai.NewGateway(cfg.AI)
@@ -82,9 +97,16 @@ func main() {
 		Health:   handler.NewHealthHandler(),
 		Image:    handler.NewImageHandler(imageSvc, maxRequestBody),
 		Decision: handler.NewDecisionHandler(decisionSvc, maxRequestBody),
+		Admin:    handler.NewAdminHandler(service.NewAdminService(cfg, cfgPath)),
 	}
 
 	// ---------- 4. 构建路由并启动 HTTP 服务 ----------
+	// 管理台未初始化时给出明确入口提示（首次访问 /admin 会引导设置账号密码）
+	if !cfg.Admin.IsInitialized() {
+		slog.Info("admin console is not initialized, open /admin to set username and password",
+			"addr", cfg.Server.Addr)
+	}
+
 	engine := router.SetupRouter(cfg, hs)
 	srv := &http.Server{
 		Addr:              cfg.Server.Addr,

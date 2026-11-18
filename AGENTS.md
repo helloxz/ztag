@@ -4,7 +4,7 @@
 
 ## Commands
 - 编译：`./scripts/build.sh`（输出 `bin/ztag`）或 `make build`
-- 开发运行：`./scripts/dev.sh`（go run，可透传 `-config`）
+- 开发运行：`./scripts/dev.sh`（go run，可透传 `-config`）；默认从磁盘读管理台资源（`ZTAG_WEB_DIR=internal/webui/web`），改前端文件刷新浏览器即可，无需重启；`ZTAG_WEB_DIR= ./scripts/dev.sh` 可退回内嵌资源
 - 检查：`make vet`、`gofmt -l .`
 - 配置：`data/config.toml`，首次启动自动从内嵌模板生成（docker 挂载 `data/` 持久化）
 
@@ -13,11 +13,12 @@
 router → handler → service → ai
 ```
 - `internal/router`：所有路由统一在这里注册（唯一挂载点）
-- `internal/middleware`：Recovery / AccessLog / Auth / RateLimit
+- `internal/middleware`：Recovery / AccessLog / Auth / RateLimit / AdminSession
 - `internal/handler`：表现层——参数解析 + 统一响应（薄层，无业务逻辑）
 - `internal/service`：业务编排——校验 → AI 网关调用
 - `internal/ai`：多渠道网关（channel 内多模型）；接入真实模型用 `goai.GenerateObject[T]`，当前为 mock。**例外**：场景决策（Gemini Decision 1 / Decisions API）不走 goai，见 `decision_client.go`（原生 net/http）
 - `internal/config` / `internal/model` / `internal/helper`：配置、领域模型、通用助手
+- `internal/webui`：管理台前端资源（HTML/CSS/JS），`go:embed` 内嵌进二进制
 
 ## Conventions（必须遵守）
 1. **注释**：关键代码写中文注释；注释保持中文，代码标识符/消息保持英文
@@ -35,5 +36,6 @@ router → handler → service → ai
 - 主备双渠道：`[[ai.channels]]` 的 `id` 仅允许 `default`（必填）/ `backup`（可选）；`models` 为模型标识字符串数组；`type` ∈ `openai-chat | openai-response | anthropic`
 - 场景决策：配置在 `[ai.decision]`（enabled/base_url/api_key/model/resolution/timeout），单模型无主备；缺段不阻断启动，仅 `/api/v1/image/decision` 返回 `decision model is not configured`
 - 图片预处理统一走 `internal/service/image_prepare.go` 的 `ImagePreparer`（两个接口共用同一并发信号量）
+- Web 管理台：入口 `/admin`（与 API 同端口，独立会话鉴权，不使用 API Key）。`[admin] username / password_hash`（bcrypt）未设置时进入初始化页；账号密码改动立即生效，其余配置保存后需重启。配置按分区保存（`PUT /admin/api/config/{base|channel|decision|key}`，只覆盖本分区字段），落盘为覆盖式整体重写（go-toml ↔ viper 同一后端，不保留注释），写前跑同一套 `Validate()`，文件权限 0600
 - 本机 `:8080` / `:18080` 可能被环境占用，本地验证建议换端口
 - 路线图：真实模型接入 → 图片下载/校验助手 → 渠道失败切换 → 限流落地 → 分类阈值可配置

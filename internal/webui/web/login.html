@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 · ZTAG</title>
+  <link rel="stylesheet" href="/admin/assets/oat.min.css">
+  <link rel="stylesheet" href="/admin/assets/app.css">
+  <script src="/admin/assets/oat.min.js" defer></script>
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-stack">
+      <h1 class="auth-title">登录后台</h1>
+
+      <div class="card auth-card">
+        <div id="msg" role="alert" hidden></div>
+
+        <form id="login-form">
+          <div data-field>
+            <label for="username">用户名</label>
+            <input id="username" name="username" autocomplete="username" required>
+          </div>
+          <div data-field>
+            <label for="password">密码</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <button type="submit" class="w-100">登录</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin/assets/app.js"></script>
+  <script>
+    const form = $('login-form');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await apiCall('/admin/api/login', {
+          method: 'POST',
+          body: { username: $('username').value.trim(), password: $('password').value },
+        });
+        window.location.href = '/admin';
+      } catch (err) {
+        showMsg($('msg'), err.message);
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,490 @@
+/* ZTAG 管理台补充样式：只补布局、对齐与间距，视觉风格全部来自 oat */
+
+body {
+  min-height: 100dvh;
+}
+
+/* ---------------- 登录 / 初始化页 ---------------- */
+
+.auth-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: var(--space-4);
+}
+
+/* 标题在卡片外，与卡片同宽居中 */
+.auth-stack {
+  width: min(100%, 26rem);
+}
+
+.auth-title {
+  margin: 0 0 var(--space-10);
+  font-size: var(--text-2);
+  font-weight: var(--font-semibold);
+  text-align: center;
+}
+
+.auth-card {
+  width: 100%;
+}
+
+/* ---------------- 管理台布局 ---------------- */
+
+[data-sidebar-layout] {
+  --sidebar-width: 14rem;
+  --topnav-height: 3.5rem;
+}
+
+/* oat 给 main 加了 2rem 顶部内边距；顶栏贴顶时需要去掉，否则会压出一条缝 */
+#layout > main {
+  padding-block-start: 0;
+}
+
+/* 侧栏品牌行与顶栏同高，分隔线对齐 */
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  height: var(--topnav-height);
+  padding-block: 0;
+  padding-inline: var(--space-4);
+}
+
+/* 窄屏抽屉：顶栏覆盖抽屉顶部，品牌行无意义，直接隐藏 */
+@media (max-width: 768px) {
+  .sidebar-brand {
+    display: none;
+  }
+}
+
+/* 导航：字号与点击区域放大一档 */
+aside[data-sidebar] nav {
+  font-size: var(--text-6);
+}
+
+aside[data-sidebar] nav a {
+  padding: var(--space-2) var(--space-3);
+}
+
+.sidebar-brand strong {
+  font-size: var(--text-5);
+  letter-spacing: 0.04em;
+}
+
+/* 侧栏底部：版本号 + GitHub，居中 */
+.sidebar-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-block-start: 1px solid var(--border);
+  font-size: var(--text-8);
+  color: var(--muted-foreground);
+}
+
+.sidebar-foot a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sidebar-foot a:hover {
+  color: var(--primary);
+}
+
+/* 顶栏：标题占满左侧，账号菜单靠右 */
+.topnav-title {
+  margin-inline-end: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-4);
+  font-weight: var(--font-semibold);
+}
+
+/* 顶栏内容与下方卡片左右对齐：内层与 .page 同宽同内边距 */
+header[data-topnav] {
+  padding-inline: 0;
+  min-height: var(--topnav-height);
+}
+
+.topnav-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 62rem;
+  margin-inline: auto;
+  padding-inline: var(--space-6);
+}
+
+/* 右上角用户芯片：头像 + 用户名 + 箭头 */
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  background-color: transparent;
+  color: var(--foreground);
+  font-size: var(--text-7);
+  font-weight: var(--font-medium);
+}
+
+.user-chip:hover {
+  background-color: var(--accent);
+}
+
+.user-chip .avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  border-radius: var(--radius-full);
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: var(--text-8);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+}
+
+.user-chip .user-name {
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  color: var(--muted-foreground);
+}
+
+/* 下拉选择器：用 oat 的 ot-dropdown 拼出与输入框一致的外观 */
+.select {
+  display: block;
+  margin-block-start: var(--space-1);
+}
+
+.select > button {
+  width: 100%;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-medium);
+  background-color: var(--background);
+  color: var(--foreground);
+  font-size: var(--text-7);
+  font-weight: var(--font-normal);
+}
+
+.select > button:hover:not(:disabled) {
+  background-color: var(--background);
+  border-color: var(--ring);
+}
+
+.select > button:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px rgb(from var(--ring) r g b / .25);
+}
+
+/* 与输入框的禁用态一致：灰底、不降透明度 */
+.select > button:disabled {
+  opacity: 1;
+  background-color: var(--muted);
+}
+
+.select [popover] {
+  min-width: 0;
+  padding: var(--space-1);
+}
+
+.select [role="menuitem"] {
+  width: 100%;
+  justify-content: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-small);
+  background-color: transparent;
+  color: var(--foreground);
+  font-size: var(--text-7);
+  font-weight: var(--font-normal);
+}
+
+.select [role="menuitem"]:hover,
+.select [role="menuitem"]:focus {
+  background-color: var(--accent);
+  color: var(--foreground);
+  outline: none;
+}
+
+.select [role="menuitem"][aria-selected="true"] {
+  font-weight: var(--font-semibold);
+}
+
+.select [role="menuitem"][aria-selected="true"]::after {
+  content: "✓";
+  margin-inline-start: auto;
+  color: var(--primary);
+}
+
+/* 折叠按钮：oat 只改了背景/边框，文字色仍是 primary-foreground，图标会看不见 */
+[data-sidebar-toggle] {
+  color: var(--foreground);
+  padding: var(--space-1);
+}
+
+@media (max-width: 768px) {
+  [data-sidebar-toggle] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+
+/* 账号菜单：oat 的 menuitem 是 <button>，会被基础按钮样式染成主色块 */
+#user-menu [role="menuitem"] {
+  width: 100%;
+  justify-content: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-small);
+  background-color: transparent;
+  color: var(--foreground);
+  font-size: var(--text-7);
+  font-weight: var(--font-normal);
+}
+
+#user-menu [role="menuitem"]:hover,
+#user-menu [role="menuitem"]:focus {
+  background-color: var(--accent);
+  color: var(--foreground);
+  outline: none;
+}
+
+/* 内容区 */
+.page {
+  max-width: 62rem;
+  margin-inline: auto;
+  padding: var(--space-6);
+}
+
+.page section.card {
+  margin-block-end: var(--space-5);
+}
+
+.page > #msg {
+  margin-block-end: var(--space-5);
+}
+
+/* 分区功能说明：一句解释这一页配的是什么、输出什么 */
+.page-intro {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border-inline-start: 3px solid var(--border);
+  border-radius: var(--radius-small);
+  background-color: var(--faint);
+  color: var(--muted-foreground);
+  font-size: var(--text-7);
+  line-height: var(--leading-normal);
+}
+
+.page-intro b {
+  color: var(--foreground);
+  font-weight: var(--font-semibold);
+}
+
+/* 卡片标题行：标题 / 说明 / 右侧控件 */
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-block-end: var(--space-5);
+}
+
+.card-head h3 {
+  margin: 0;
+  font-size: var(--text-5);
+}
+
+.card-head .hint {
+  margin: 0;
+}
+
+.card-head .spacer {
+  margin-inline-start: auto;
+}
+
+/* 表单网格：最多三列，窄屏自动塌成单列 */
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: var(--space-4) var(--space-6);
+  margin-block-end: var(--space-4);
+}
+
+.field-grid:last-child {
+  margin-block-end: 0;
+}
+
+.field-grid > [data-field] {
+  margin-block-end: 0;
+}
+
+/* 网格后面紧跟的单列字段与网格间距已由 margin-block-end 提供 */
+.field-grid + [data-field] {
+  margin-block-start: 0;
+}
+
+/* 开关行：switch 与文字垂直居中（oat 默认按基线对齐，容易显得偏高） */
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: var(--font-medium);
+}
+
+.switch-row input[role="switch"] {
+  margin: 0;
+  flex: none;
+}
+
+/* 内容区底部动作条：跟随内容滚动，不吸底 */
+.save-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-block-start: var(--space-8);
+  padding-block-start: var(--space-5);
+  border-block-start: 1px solid var(--border);
+}
+
+.save-bar .status {
+  font-size: var(--text-7);
+  color: var(--warning);
+}
+
+.save-bar .hint {
+  margin: 0 0 0 auto;
+}
+
+/* 保存结果紧挨动作条显示，避免提示条在页面顶部看不到 */
+.save-result {
+  font-size: var(--text-7);
+}
+
+.save-result[data-variant="success"] {
+  color: var(--success);
+}
+
+.save-result[data-variant="error"] {
+  color: var(--danger);
+}
+
+/* 密钥录入行：输入框与按钮同高，窄屏自动换行 */
+.key-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-block-start: var(--space-3);
+}
+
+.key-input-row input {
+  flex: 1 1 12rem;
+  margin: 0; /* oat 给表单控件加了上边距，横向排布里会顶偏 */
+}
+
+@media (max-width: 600px) {
+  .key-input-row input {
+    flex-basis: 100%;
+  }
+
+  .key-input-row button {
+    flex: 1;
+  }
+}
+
+/* 无密钥时不要留出空行占位 */
+#key-count:empty {
+  display: none;
+}
+
+/* 通用 */
+.hint {
+  color: var(--muted-foreground);
+  font-size: var(--text-7);
+}
+
+/* ---------------- 接口调试 ---------------- */
+
+/* 图片来源单选行 */
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  margin-block-start: var(--space-2);
+}
+
+.test-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-block-start: var(--space-2);
+}
+
+/* curl / 响应正文 */
+.code-block {
+  margin: 0;
+  padding: var(--space-4);
+  background-color: var(--faint);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  font-family: var(--font-mono);
+  font-size: var(--text-8);
+  line-height: 1.7;
+  white-space: pre;
+  overflow: auto;
+  max-height: 24rem;
+}
+
+.code-block code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+  color: var(--foreground);
+}
+
+#test-curl:empty::before {
+  content: "# 填写图片 URL 或选择文件后生成命令";
+  color: var(--muted-foreground);
+}
+
+/* 等宽字体：表格里的密钥用小字号，输入框保持与其它控件相同的字号（高度才一致） */
+.mono {
+  font-family: var(--font-mono);
+}
+
+td.mono {
+  font-size: var(--text-8);
+}
+
+input.mono {
+  font-size: var(--text-7);
+}
+
+[hidden] {
+  display: none !important;
+}

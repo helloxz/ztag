@@ -19,46 +19,50 @@ import (
 var defaultConfig []byte // 内嵌的默认配置模板（首次启动拷贝到 data/ 目录）
 
 // Config 应用全局配置根结构。
+//
+// 每个字段同时带 mapstructure（viper 读取）、toml（Web 管理台写回）与 json
+// （管理台接口）三套 tag：三处命名必须保持一致，否则写回后会与读取的键错位。
 type Config struct {
-	Server ServerConfig `mapstructure:"server"`
-	Log    LogConfig    `mapstructure:"log"`
-	Auth   AuthConfig   `mapstructure:"auth"`
-	AI     AIConfig     `mapstructure:"ai"`
+	Server ServerConfig `mapstructure:"server" toml:"server" json:"server"`
+	Log    LogConfig    `mapstructure:"log" toml:"log" json:"log"`
+	Auth   AuthConfig   `mapstructure:"auth" toml:"auth" json:"auth"`
+	AI     AIConfig     `mapstructure:"ai" toml:"ai" json:"ai"`
+	Admin  AdminConfig  `mapstructure:"admin" toml:"admin" json:"admin"`
 }
 
 // ServerConfig HTTP 服务配置。
 type ServerConfig struct {
-	Addr    string `mapstructure:"addr"`    // HTTP 监听地址，如 ":8080"
-	Mode    string `mapstructure:"mode"`    // gin 运行模式：debug | release
-	Workers int    `mapstructure:"workers"` // 并发工作者数（同时进行的重内存分析任务数），未配置默认 4，最小 1
+	Addr    string `mapstructure:"addr" toml:"addr" json:"addr"`          // HTTP 监听地址，如 ":8080"
+	Mode    string `mapstructure:"mode" toml:"mode" json:"mode"`          // gin 运行模式：debug | release
+	Workers int    `mapstructure:"workers" toml:"workers" json:"workers"` // 并发工作者数（同时进行的重内存分析任务数），未配置默认 4，最小 1
 }
 
 // LogConfig 日志配置。
 type LogConfig struct {
-	Level string `mapstructure:"level"` // 日志级别：debug | info | warn | error
+	Level string `mapstructure:"level" toml:"level" json:"level"` // 日志级别：debug | info | warn | error
 }
 
 // AuthConfig 对外 API 鉴权配置。
 type AuthConfig struct {
-	Enabled bool     `mapstructure:"enabled"`  // 是否开启 API Key 鉴权
-	APIKeys []string `mapstructure:"api_keys"` // 允许访问的 API Key 列表
+	Enabled bool     `mapstructure:"enabled" toml:"enabled" json:"enabled"`    // 是否开启 API Key 鉴权
+	APIKeys []string `mapstructure:"api_keys" toml:"api_keys" json:"api_keys"` // 允许访问的 API Key 列表
 }
 
 // AIConfig 多后端大模型渠道配置。
 // 固定支持两个渠道 id：default（默认/主渠道）与 backup（备用渠道），
 // 其中 default 必填，backup 可选。
 type AIConfig struct {
-	Timeout                  int             `mapstructure:"timeout"`                    // 单次 AI 调用超时（秒）
-	ImageTimeout             int             `mapstructure:"image_timeout"`              // 图片下载超时（秒），缺省/非法时回退 30s
-	MaxRetries               int             `mapstructure:"max_retries"`                // 单渠道内失败重试次数
-	Mock                     bool            `mapstructure:"mock"`                       // 是否启用模拟 AI（本地无 API Key 联调用）
-	MaxImageBytes            int64           `mapstructure:"max_image_bytes"`            // 图片大小上限（字节），默认 10MB
-	AllowPrivateURLs         bool            `mapstructure:"allow_private_urls"`         // 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）
-	Temperature              float64         `mapstructure:"temperature"`                // 采样温度（0~2，越低输出越稳定，默认 0.2）
-	TopP                     float64         `mapstructure:"top_p"`                      // 核采样（0~1，控制随机性，默认 0.9）
-	DisabledThinkingKeywords []string        `mapstructure:"disabled_thinking_keywords"` // 命中即显式关闭思考的模型关键词列表（如 qwen/mimo/deepseek）
-	Channels                 []ChannelConfig `mapstructure:"channels"`                   // 渠道列表（id 仅允许 default / backup）
-	Decision                 DecisionConfig  `mapstructure:"decision"`                   // 场景决策模型（Gemini Decision 1 / Decisions API）
+	Timeout                  int             `mapstructure:"timeout" toml:"timeout" json:"timeout"`                                                          // 单次 AI 调用超时（秒）
+	ImageTimeout             int             `mapstructure:"image_timeout" toml:"image_timeout" json:"image_timeout"`                                        // 图片下载超时（秒），缺省/非法时回退 30s
+	MaxRetries               int             `mapstructure:"max_retries" toml:"max_retries" json:"max_retries"`                                              // 单渠道内失败重试次数
+	Mock                     bool            `mapstructure:"mock" toml:"mock" json:"mock"`                                                                   // 是否启用模拟 AI（本地无 API Key 联调用）
+	MaxImageBytes            int64           `mapstructure:"max_image_bytes" toml:"max_image_bytes" json:"max_image_bytes"`                                  // 图片大小上限（字节），默认 10MB
+	AllowPrivateURLs         bool            `mapstructure:"allow_private_urls" toml:"allow_private_urls" json:"allow_private_urls"`                         // 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）
+	Temperature              float64         `mapstructure:"temperature" toml:"temperature" json:"temperature"`                                              // 采样温度（0~2，越低输出越稳定，默认 0.2）
+	TopP                     float64         `mapstructure:"top_p" toml:"top_p" json:"top_p"`                                                                // 核采样（0~1，控制随机性，默认 0.9）
+	DisabledThinkingKeywords []string        `mapstructure:"disabled_thinking_keywords" toml:"disabled_thinking_keywords" json:"disabled_thinking_keywords"` // 命中即显式关闭思考的模型关键词列表（如 qwen/mimo/deepseek）
+	Channels                 []ChannelConfig `mapstructure:"channels" toml:"channels" json:"channels"`                                                       // 渠道列表（id 仅允许 default / backup）
+	Decision                 DecisionConfig  `mapstructure:"decision" toml:"decision" json:"decision"`                                                       // 场景决策模型（Gemini Decision 1 / Decisions API）
 }
 
 // DecisionConfig 场景决策模型配置（Gemini Decision 1）。
@@ -68,12 +72,12 @@ type AIConfig struct {
 // temperature/top_p、structured output 等参数。缺失该段时不阻断启动，
 // 仅对应接口返回 "decision model is not configured"。
 type DecisionConfig struct {
-	Enabled    bool   `mapstructure:"enabled"`    // 是否启用场景决策接口
-	BaseURL    string `mapstructure:"base_url"`   // 接口基础地址（可带 /v1beta，也可是兼容网关）
-	APIKey     string `mapstructure:"api_key"`    // API Key（请求头 x-goog-api-key）
-	Model      string `mapstructure:"model"`      // 模型标识，如 gemini-decision-1
-	Resolution string `mapstructure:"resolution"` // 图片分辨率档位：low | medium | high | ultra_high
-	Timeout    int    `mapstructure:"timeout"`    // 单次调用超时（秒），缺省/非法回退 30s
+	Enabled    bool   `mapstructure:"enabled" toml:"enabled" json:"enabled"`          // 是否启用场景决策接口
+	BaseURL    string `mapstructure:"base_url" toml:"base_url" json:"base_url"`       // 接口基础地址（可带 /v1beta，也可是兼容网关）
+	APIKey     string `mapstructure:"api_key" toml:"api_key" json:"api_key"`          // API Key（请求头 x-goog-api-key）
+	Model      string `mapstructure:"model" toml:"model" json:"model"`                // 模型标识，如 gemini-decision-1
+	Resolution string `mapstructure:"resolution" toml:"resolution" json:"resolution"` // 图片分辨率档位：low | medium | high | ultra_high
+	Timeout    int    `mapstructure:"timeout" toml:"timeout" json:"timeout"`          // 单次调用超时（秒），缺省/非法回退 30s
 }
 
 // 决策模型默认值。
@@ -106,11 +110,11 @@ const (
 
 // ChannelConfig 单个 AI 渠道（对应一个后端大模型服务商或兼容网关）。
 type ChannelConfig struct {
-	ID      string   `mapstructure:"id"`       // 渠道唯一标识：default | backup
-	Type    string   `mapstructure:"type"`     // 协议类型：openai-chat | openai-response | anthropic
-	BaseURL string   `mapstructure:"base_url"` // 接口基础地址
-	APIKey  string   `mapstructure:"api_key"`  // API Key
-	Models  []string `mapstructure:"models"`   // 该渠道下的模型列表（模型标识字符串数组）
+	ID      string   `mapstructure:"id" toml:"id" json:"id"`                   // 渠道唯一标识：default | backup
+	Type    string   `mapstructure:"type" toml:"type" json:"type"`             // 协议类型：openai-chat | openai-response | anthropic
+	BaseURL string   `mapstructure:"base_url" toml:"base_url" json:"base_url"` // 接口基础地址
+	APIKey  string   `mapstructure:"api_key" toml:"api_key" json:"api_key"`    // API Key
+	Models  []string `mapstructure:"models" toml:"models" json:"models"`       // 该渠道下的模型列表（模型标识字符串数组）
 }
 
 // DefaultDataDir 运行时数据目录（配置、后续的日志/缓存等都放这里，便于 docker 挂载）。
@@ -197,14 +201,15 @@ func Load(path string) (*Config, error) {
 		cfg.AI.Decision.Timeout = DefaultDecisionTimeout
 	}
 
-	if err := cfg.validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 	return &cfg, nil
 }
 
-// validate 校验配置的必填项与取值范围。
-func (c *Config) validate() error {
+// Validate 校验配置的必填项与取值范围。
+// 对外导出是为了让 Web 管理台保存前用同一套规则检查，避免写入非法配置。
+func (c *Config) Validate() error {
 	// 服务基础配置
 	if c.Server.Addr == "" {
 		return fmt.Errorf("server.addr must not be empty")

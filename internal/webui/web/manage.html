@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理台 · ZTAG</title>
+  <link rel="stylesheet" href="/admin/assets/oat.min.css">
+  <link rel="stylesheet" href="/admin/assets/app.css">
+  <script src="/admin/assets/oat.min.js" defer></script>
+</head>
+<body>
+  <div data-sidebar-layout id="layout">
+    <!-- 左侧导航：占满整列高度（顶栏在右侧内容区内） -->
+    <aside data-sidebar>
+      <header class="sidebar-brand">
+        <strong>ZTAG</strong>
+      </header>
+      <nav>
+        <ul>
+          <li><a href="#base" data-section="base" aria-current="page">基础配置</a></li>
+          <li><a href="#channel" data-section="channel">图像审核</a></li>
+          <li><a href="#decision" data-section="decision">风险审核</a></li>
+          <li><a href="#key" data-section="key">API 密钥</a></li>
+          <li><a href="#test" data-section="test">接口调试</a></li>
+          <li><a href="#account" data-section="account">账号</a></li>
+        </ul>
+      </nav>
+      <footer class="sidebar-foot">
+        <span id="version">v-</span>
+        <span aria-hidden="true">·</span>
+        <a href="https://github.com/helloxz/ztag" target="_blank" rel="noopener">GitHub</a>
+      </footer>
+    </aside>
+
+    <!-- 右侧内容 -->
+    <main>
+      <!-- 顶栏：折叠按钮（移动端）+ 当前页标题 + 右上角账号菜单 -->
+      <header data-topnav>
+        <div class="topnav-inner">
+          <button data-sidebar-toggle aria-label="打开导航菜单">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <strong class="topnav-title" id="page-title">基础配置</strong>
+          <ot-dropdown>
+            <button class="user-chip" data-variant="ghost" popovertarget="user-menu" aria-label="账号菜单">
+              <span class="avatar" id="avatar" aria-hidden="true">·</span>
+              <span class="user-name" id="who">…</span>
+              <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div id="user-menu" popover>
+              <button role="menuitem" id="goto-account">修改密码</button>
+              <button role="menuitem" id="logout-btn">退出登录</button>
+            </div>
+          </ot-dropdown>
+        </div>
+      </header>
+
+      <div class="page">
+        <div id="msg" role="alert" aria-live="polite" hidden></div>
+
+        <!-- 基础配置 -->
+        <section id="panel-base">
+          <section class="card">
+            <header class="card-head"><h3>服务</h3></header>
+            <div class="field-grid">
+              <div data-field>
+                <label for="addr">监听地址</label>
+                <input id="addr" placeholder=":18080">
+                <span data-hint>修改后需重启服务</span>
+              </div>
+              <div data-field>
+                <label for="mode-trigger">运行模式</label>
+                <ot-dropdown class="select">
+                  <button type="button" id="mode-trigger" popovertarget="menu-mode" aria-haspopup="listbox">
+                    <span data-label>release</span>
+                    <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                  <div id="menu-mode" popover role="listbox">
+                    <button role="menuitem" data-value="release">release</button>
+                    <button role="menuitem" data-value="debug">debug</button>
+                    <button role="menuitem" data-value="test">test</button>
+                  </div>
+                <input type="hidden" id="mode" value="release">
+                </ot-dropdown>
+              </div>
+              <div data-field>
+                <label for="workers">并发工作者数</label>
+                <input id="workers" type="number" min="1" step="1">
+              </div>
+              <div data-field>
+                <label for="loglevel-trigger">日志级别</label>
+                <ot-dropdown class="select">
+                  <button type="button" id="loglevel-trigger" popovertarget="menu-loglevel" aria-haspopup="listbox">
+                    <span data-label>info</span>
+                    <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                  <div id="menu-loglevel" popover role="listbox">
+                    <button role="menuitem" data-value="debug">debug</button>
+                    <button role="menuitem" data-value="info">info</button>
+                    <button role="menuitem" data-value="warn">warn</button>
+                    <button role="menuitem" data-value="error">error</button>
+                  </div>
+                <input type="hidden" id="loglevel" value="info">
+                </ot-dropdown>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <header class="card-head">
+              <h3>AI 调用</h3>
+              <span class="hint">超时单位为秒，重试仅在同一渠道内生效</span>
+            </header>
+            <div class="field-grid">
+              <div data-field>
+                <label for="timeout">AI 调用超时（秒）</label>
+                <input id="timeout" type="number" min="1" step="1">
+              </div>
+              <div data-field>
+                <label for="image-timeout">图片下载超时（秒）</label>
+                <input id="image-timeout" type="number" min="1" step="1">
+              </div>
+              <div data-field>
+                <label for="max-retries">失败重试次数</label>
+                <input id="max-retries" type="number" min="0" step="1">
+              </div>
+              <div data-field>
+                <label for="max-image-bytes">图片大小上限（字节）</label>
+                <input id="max-image-bytes" type="number" min="1" step="1">
+              </div>
+              <div data-field>
+                <label for="temperature">采样温度 temperature</label>
+                <input id="temperature" type="number" min="0" max="2" step="0.1">
+              </div>
+              <div data-field>
+                <label for="top-p">核采样 top_p</label>
+                <input id="top-p" type="number" min="0" max="1" step="0.05">
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <header class="card-head"><h3>模型行为</h3></header>
+            <div class="field-grid">
+              <div data-field>
+                <label class="switch-row"><input type="checkbox" role="switch" id="mock"> 启用模拟 AI（mock）</label>
+                <span data-hint>不调用真实模型，本地联调用</span>
+              </div>
+              <div data-field>
+                <label class="switch-row"><input type="checkbox" role="switch" id="allow-private"> 放行内网图片地址</label>
+                <span data-hint>SSRF 防护，生产环境保持关闭</span>
+              </div>
+            </div>
+            <div data-field class="mt-4">
+              <label for="keywords">关闭思考模式的模型关键词</label>
+              <textarea id="keywords" rows="4" placeholder="每行一个，如 qwen"></textarea>
+              <span data-hint>命中即对该模型显式关闭思考模式；留空则使用内置默认列表</span>
+            </div>
+          </section>
+        </section>
+
+        <!-- 渠道 -->
+        <section id="panel-channel" hidden>
+          <p class="page-intro">
+            调用<b>通用多模态大模型</b>识别图片内容：提取关键词、生成描述，并给出内容分类与风险等级（接口 <code>POST /api/v1/image/analyze</code>）。
+            <a href="#test" data-test-api="analyze">去接口调试 →</a>
+          </p>
+          <section class="card">
+            <header class="card-head">
+              <h3>默认渠道 default</h3>
+              <span class="hint">必填，普通请求走这里</span>
+            </header>
+            <div class="field-grid">
+              <div data-field>
+                <label for="d-type-trigger">协议类型</label>
+                <ot-dropdown class="select">
+                  <button type="button" id="d-type-trigger" popovertarget="menu-dtype" aria-haspopup="listbox">
+                    <span data-label>openai-chat</span>
+                    <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                  <div id="menu-dtype" popover role="listbox">
+                    <button role="menuitem" data-value="openai-chat">openai-chat</button>
+                    <button role="menuitem" data-value="openai-response">openai-response</button>
+                    <button role="menuitem" data-value="anthropic">anthropic</button>
+                  </div>
+                <input type="hidden" id="d-type" value="openai-chat">
+                </ot-dropdown>
+              </div>
+              <div data-field>
+                <label for="d-base-url">接口地址 base_url</label>
+                <input id="d-base-url" placeholder="https://api.openai.com/v1">
+              </div>
+            </div>
+            <div data-field>
+              <label for="d-api-key">API Key</label>
+              <input id="d-api-key" class="mono" autocomplete="off" spellcheck="false">
+            </div>
+            <div data-field>
+              <label for="d-models">模型列表</label>
+              <textarea id="d-models" rows="4" placeholder="每行一个模型标识"></textarea>
+              <span data-hint>客户端可用 "default/模型标识" 指定模型</span>
+            </div>
+          </section>
+
+          <section class="card">
+            <header class="card-head">
+              <h3>备用渠道 backup</h3>
+              <span class="hint">默认渠道失败时自动切换兜底</span>
+              <span class="spacer"></span>
+              <label class="switch-row"><input type="checkbox" role="switch" id="b-enabled"> 启用</label>
+            </header>
+            <div id="b-fields">
+              <div class="field-grid">
+                <div data-field>
+                  <label for="b-type-trigger">协议类型</label>
+                  <ot-dropdown class="select">
+                    <button type="button" id="b-type-trigger" popovertarget="menu-btype" aria-haspopup="listbox">
+                      <span data-label>openai-chat</span>
+                      <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                    <div id="menu-btype" popover role="listbox">
+                      <button role="menuitem" data-value="openai-chat">openai-chat</button>
+                      <button role="menuitem" data-value="openai-response">openai-response</button>
+                      <button role="menuitem" data-value="anthropic">anthropic</button>
+                    </div>
+                  <input type="hidden" id="b-type" value="openai-chat">
+                  </ot-dropdown>
+                </div>
+                <div data-field>
+                  <label for="b-base-url">接口地址 base_url</label>
+                  <input id="b-base-url">
+                </div>
+              </div>
+              <div data-field>
+                <label for="b-api-key">API Key</label>
+                <input id="b-api-key" class="mono" autocomplete="off" spellcheck="false">
+              </div>
+              <div data-field>
+                <label for="b-models">模型列表</label>
+                <textarea id="b-models" rows="3" placeholder="每行一个模型标识"></textarea>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <!-- 场景决策 -->
+        <section id="panel-decision" hidden>
+          <p class="page-intro">
+            调用<b>决策模型</b>只做场景分类与风险评分：不提取关键词、不生成描述，输出分类与 0~100 风险分（接口 <code>POST /api/v1/image/decision</code>）。
+            <a href="#test" data-test-api="decision">去接口调试 →</a>
+          </p>
+          <section class="card">
+            <header class="card-head">
+              <h3>场景决策模型</h3>
+              <span class="hint">仅做场景分类与风险评分，无主备切换</span>
+              <span class="spacer"></span>
+              <label class="switch-row"><input type="checkbox" role="switch" id="dec-enabled"> 启用</label>
+            </header>
+            <div id="dec-fields">
+              <div class="field-grid">
+                <div data-field>
+                  <label for="dec-base-url">接口地址 base_url</label>
+                  <input id="dec-base-url">
+                </div>
+                <div data-field>
+                  <label for="dec-model">模型标识</label>
+                  <input id="dec-model">
+                </div>
+                <div data-field>
+                  <label for="dec-resolution-trigger">图片分辨率</label>
+                  <ot-dropdown class="select">
+                    <button type="button" id="dec-resolution-trigger" popovertarget="menu-decres" aria-haspopup="listbox">
+                      <span data-label>high</span>
+                      <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                    <div id="menu-decres" popover role="listbox">
+                      <button role="menuitem" data-value="low">low</button>
+                      <button role="menuitem" data-value="medium">medium</button>
+                      <button role="menuitem" data-value="high">high</button>
+                      <button role="menuitem" data-value="ultra_high">ultra_high</button>
+                    </div>
+                  <input type="hidden" id="dec-resolution" value="high">
+                  </ot-dropdown>
+                </div>
+                <div data-field>
+                  <label for="dec-timeout">调用超时（秒）</label>
+                  <input id="dec-timeout" type="number" min="1" step="1">
+                </div>
+              </div>
+              <div data-field>
+                <label for="dec-api-key">API Key</label>
+                <input id="dec-api-key" class="mono" autocomplete="off" spellcheck="false">
+              </div>
+            </div>
+            <p class="hint">关闭后 POST /api/v1/image/decision 直接返回未配置，不影响图片分析接口。</p>
+          </section>
+        </section>
+
+        <!-- API 密钥 -->
+        <section id="panel-key" hidden>
+          <section class="card">
+            <header class="card-head">
+              <h3>对外 API 鉴权</h3>
+              <span class="badge" data-variant="warning" id="auth-off" hidden>鉴权未开启</span>
+              <span class="spacer"></span>
+              <label class="switch-row"><input type="checkbox" role="switch" id="auth-enabled"> 开启</label>
+            </header>
+            <p class="hint">请求头携带 <code>Authorization: Bearer &lt;key&gt;</code> 或 <code>X-API-Key</code>；修改需重启服务生效。</p>
+
+            <div class="table mt-4">
+              <table>
+                <thead>
+                  <tr>
+                    <th>API Key</th>
+                    <th class="align-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="key-rows"></tbody>
+              </table>
+            </div>
+            <p class="hint" id="key-count"></p>
+
+            <div class="key-input-row">
+              <input id="new-key" class="mono" placeholder="输入或随机生成 API Key" autocomplete="off" spellcheck="false">
+              <button type="button" data-variant="secondary" id="gen-key-btn">随机生成</button>
+              <button type="button" data-variant="secondary" id="add-key-btn">添加</button>
+            </div>
+            <p class="hint">添加或删除后点击页面底部「保存配置」才会写回 config.toml。</p>
+          </section>
+        </section>
+
+        <!-- 接口调试 -->
+        <section id="panel-test" hidden>
+          <p class="page-intro">
+            在这里直接调用对外接口：选择接口与图片来源，点「发送请求」即可看到真实返回；下方 curl 与页面发送的是同一份请求体，可直接复制到终端复现。
+          </p>
+
+          <section class="card">
+            <header class="card-head">
+              <h3>请求</h3>
+              <span class="spacer"></span>
+              <span class="hint" id="test-api-hint">POST /api/v1/image/analyze</span>
+            </header>
+
+            <div class="field-grid">
+              <div data-field>
+                <label for="test-api-trigger">接口</label>
+                <ot-dropdown class="select">
+                  <input type="hidden" id="test-api" value="analyze">
+                  <button type="button" id="test-api-trigger" popovertarget="menu-test-api" aria-haspopup="listbox">
+                    <span data-label>图像审核</span>
+                    <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                  <div id="menu-test-api" popover role="listbox">
+                    <button role="menuitem" data-value="analyze">图像审核</button>
+                    <button role="menuitem" data-value="decision">风险审核</button>
+                  </div>
+                </ot-dropdown>
+              </div>
+
+              <div data-field>
+                <label>图片来源</label>
+                <div class="radio-row">
+                  <label><input type="radio" name="test-src" value="url" checked> URL 地址</label>
+                  <label><input type="radio" name="test-src" value="file"> 上传文件</label>
+                </div>
+              </div>
+            </div>
+
+            <div data-field id="test-url-field">
+              <label for="test-url">图片 URL</label>
+              <input id="test-url" placeholder="https://example.com/photo.jpg">
+              <span data-hint>由服务端下载；内网地址默认会被 SSRF 防护拦截</span>
+            </div>
+
+            <div data-field id="test-file-field" hidden>
+              <label for="test-file">选择图片</label>
+              <input id="test-file" type="file" accept="image/*">
+              <span data-hint id="test-file-info">未选择文件</span>
+            </div>
+
+            <div id="test-model-field">
+              <div class="field-grid">
+                <div data-field>
+                  <label for="test-model-trigger">模型（可选）</label>
+                  <ot-dropdown class="select">
+                    <input type="hidden" id="test-model" value="">
+                    <button type="button" id="test-model-trigger" popovertarget="menu-test-model" aria-haspopup="listbox">
+                      <span data-label>自动（不指定）</span>
+                      <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                    <div id="menu-test-model" popover role="listbox">
+                      <button role="menuitem" data-value="">自动（不指定）</button>
+                    </div>
+                  </ot-dropdown>
+                  <span data-hint>格式为 channel/模型，取自「图像审核」里配置的渠道</span>
+                </div>
+
+                <div data-field>
+                  <label class="switch-row"><input type="checkbox" role="switch" id="test-lb"> 负载均衡 load_balance</label>
+                  <span data-hint>仅在未指定模型时生效</span>
+                </div>
+              </div>
+            </div>
+
+            <div data-field class="mt-2">
+              <label for="test-key-trigger">鉴权</label>
+              <ot-dropdown class="select">
+                <input type="hidden" id="test-key" value="">
+                <button type="button" id="test-key-trigger" popovertarget="menu-test-key" aria-haspopup="listbox">
+                  <span data-label>不带鉴权</span>
+                  <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                <div id="menu-test-key" popover role="listbox">
+                  <button role="menuitem" data-value="">不带鉴权</button>
+                </div>
+              </ot-dropdown>
+              <span data-hint>使用「API 密钥」里配置的 Key；对外鉴权未开启时选「不带鉴权」</span>
+            </div>
+
+            <div class="test-actions">
+              <button id="test-send" disabled>发送请求</button>
+              <span class="hint" id="test-send-hint">请先填写 URL 或选择图片</span>
+            </div>
+          </section>
+
+          <section class="card">
+            <header class="card-head">
+              <h3>curl 命令</h3>
+              <span class="spacer"></span>
+              <button type="button" data-variant="secondary" id="test-copy">复制</button>
+            </header>
+            <pre class="code-block"><code id="test-curl"></code></pre>
+          </section>
+
+          <section class="card" id="test-result-card" hidden>
+            <header class="card-head">
+              <h3>响应</h3>
+              <span class="spacer"></span>
+              <span class="hint" id="test-result-meta"></span>
+            </header>
+            <pre class="code-block"><code id="test-result"></code></pre>
+          </section>
+        </section>
+
+        <!-- 账号 -->
+        <section id="panel-account" hidden>
+          <section class="card">
+            <header class="card-head"><h3>管理员</h3></header>
+            <div class="field-grid">
+              <div data-field>
+                <label for="admin-username">用户名</label>
+                <input id="admin-username" disabled>
+                <span data-hint>暂不支持修改用户名</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <header class="card-head"><h3>修改密码</h3></header>
+            <form id="password-form">
+              <div class="field-grid">
+                <div data-field>
+                  <label for="cur-password">当前密码</label>
+                  <input id="cur-password" type="password" autocomplete="current-password" required>
+                </div>
+                <div data-field>
+                  <label for="new-password">新密码</label>
+                  <input id="new-password" type="password" autocomplete="new-password" minlength="6" required placeholder="至少 6 位">
+                </div>
+                <div data-field>
+                  <label for="confirm-password">确认新密码</label>
+                  <input id="confirm-password" type="password" autocomplete="new-password" required>
+                </div>
+              </div>
+              <button type="submit">修改密码</button>
+            </form>
+            <p class="hint">修改密码后，其它已登录的会话将全部失效。</p>
+          </section>
+        </section>
+
+        <!-- 内容区底部动作条（不吸底） -->
+        <div class="save-bar" id="save-bar">
+          <span class="status" id="dirty" hidden>● 未保存</span>
+          <span class="save-result" id="save-result" hidden></span>
+          <span class="hint">保存后需重启服务生效</span>
+          <button id="save-btn" disabled>保存配置</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/admin/assets/app.js"></script>
+  <script>
+    // 页面分区：hash 名 → 顶栏标题
+    const SECTIONS = {
+      base: '基础配置',
+      channel: '图像审核',
+      decision: '风险审核',
+      key: 'API 密钥',
+      test: '接口调试',
+      account: '账号',
+    };
+
+    // 可保存的分区、当前配置副本、密钥列表、各分区是否有未保存改动
+    const SAVEABLE = ['base', 'channel', 'decision', 'key'];
+    const DIRTY = { base: false, channel: false, decision: false, key: false };
+    let cfg = null;
+    let apiKeys = [];
+
+    // 取值小工具
+    const val = (id) => $(id).value.trim();
+    const num = (id) => {
+      const n = Number($(id).value);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const pick = (id) => $(id).value;
+
+    // findChannel 按 id 取渠道配置
+    function findChannel(c, id) {
+      return (c.ai.channels || []).find((ch) => ch.id === id) || null;
+    }
+
+    // setWho 更新右上角用户名与头像首字母
+    function setWho(name) {
+      $('who').textContent = name;
+      $('avatar').textContent = (name || '?').charAt(0);
+    }
+
+    // applySelect 同步下拉的选中值、按钮文案与选中态
+    function applySelect(sel, value) {
+      const input = sel.querySelector('input[type=hidden]');
+      const label = sel.querySelector('[data-label]');
+      const items = Array.from(sel.querySelectorAll('[role=menuitem]'));
+      const chosen = items.find((item) => item.dataset.value === value) || items[0];
+      if (!chosen) return;
+      input.value = chosen.dataset.value;
+      label.textContent = chosen.textContent.trim();
+      items.forEach((item) => {
+        item.setAttribute('aria-selected', String(item === chosen));
+      });
+    }
+
+    // syncSelects 以隐藏 input 的值为准刷新全部下拉的显示
+    function syncSelects() {
+      document.querySelectorAll('ot-dropdown.select').forEach((sel) => {
+        applySelect(sel, sel.querySelector('input[type=hidden]').value);
+      });
+    }
+
+    // 下拉选择器：展开时宽度对齐触发器，选中后写回隐藏 input
+    document.querySelectorAll('ot-dropdown.select').forEach((sel) => {
+      const trigger = sel.querySelector('button');
+      const menu = sel.querySelector('[popover]');
+      const input = sel.querySelector('input[type=hidden]');
+
+      menu.addEventListener('toggle', (e) => {
+        if (e.newState === 'open') menu.style.width = trigger.offsetWidth + 'px';
+      });
+
+      sel.addEventListener('click', (e) => {
+        const item = e.target.closest('[role=menuitem]');
+        if (!item) return;
+        applySelect(sel, item.dataset.value);
+        menu.hidePopover();
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+
+    // currentSection 取当前分区（hash 驱动，非法值回落到 base）
+    function currentSection() {
+      const name = window.location.hash.slice(1);
+      return Object.prototype.hasOwnProperty.call(SECTIONS, name) ? name : 'base';
+    }
+
+    // markDirty 标记某个分区有未保存改动；只有当前分区会影响底部动作条
+    function markDirty(section) {
+      DIRTY[section] = true;
+      if (section === currentSection()) renderDirtyState();
+    }
+
+    // renderDirtyState 刷新「未保存」徽标与保存按钮的可用性
+    function renderDirtyState() {
+      const on = !!DIRTY[currentSection()];
+      $('dirty').hidden = !on;
+      $('save-btn').disabled = !on;
+      if (on) setSaveResult('');
+    }
+
+    // dirtySections 返回仍有未保存改动的分区名称（账号页提示用）
+    function dirtySections() {
+      return SAVEABLE.filter((section) => DIRTY[section]).map((section) => SECTIONS[section]);
+    }
+
+    // setSaveResult 在动作条上显示保存结果（6 秒后自动消失）
+    let saveResultTimer = null;
+
+    function setSaveResult(text, variant) {
+      const el = $('save-result');
+      if (saveResultTimer) {
+        clearTimeout(saveResultTimer);
+        saveResultTimer = null;
+      }
+      if (!text) {
+        el.hidden = true;
+        el.textContent = '';
+        return;
+      }
+      el.textContent = text;
+      el.dataset.variant = variant || 'success';
+      el.hidden = false;
+      saveResultTimer = setTimeout(() => {
+        el.hidden = true;
+        el.textContent = '';
+      }, 6000);
+    }
+
+    // showSection 切换分区（hash 驱动，刷新/前进后退都能停留在原分区）
+    function showSection(name) {
+      if (!Object.prototype.hasOwnProperty.call(SECTIONS, name)) name = 'base';
+
+      Object.keys(SECTIONS).forEach((key) => {
+        $('panel-' + key).hidden = key !== name;
+      });
+      document.querySelectorAll('[data-section]').forEach((link) => {
+        if (link.dataset.section === name) {
+          link.setAttribute('aria-current', 'page');
+        } else {
+          link.removeAttribute('aria-current');
+        }
+      });
+
+      $('page-title').textContent = SECTIONS[name];
+
+      // 账号页没有配置保存动作；其它分区还有未保存改动时给出提示
+      const noSave = name === 'account' || name === 'test';
+      showMsg($('msg'), '');
+      $('save-bar').hidden = noSave;
+      if (noSave && dirtySections().length) {
+        showMsg($('msg'), '还有未保存的配置改动：' + dirtySections().join('、') + '，请回到对应页面保存。', 'warning');
+      }
+      if (name === 'test') updateTestState();
+      renderDirtyState();
+
+      // 切分区时回到内容顶部，避免停在上一页的滚动位置
+      document.querySelector('#layout > main').scrollTop = 0;
+
+      // 移动端点击导航后收起抽屉
+      if (window.matchMedia('(max-width: 768px)').matches) {
+        $('layout').removeAttribute('data-sidebar-open');
+      }
+    }
+
+    // setFieldsDisabled 统一控制一组字段的禁用态（含下拉触发器）
+    function setFieldsDisabled(root, disabled) {
+      root.querySelectorAll('input, select, textarea').forEach((el) => {
+        el.disabled = disabled;
+      });
+      root.querySelectorAll('ot-dropdown.select > button').forEach((btn) => {
+        btn.disabled = disabled;
+      });
+    }
+
+    // toggleBackupFields 备用渠道未启用时禁用其输入框
+    function toggleBackupFields() {
+      setFieldsDisabled($('b-fields'), !$('b-enabled').checked);
+    }
+
+    // toggleDecisionFields 场景决策未启用时禁用其输入框
+    function toggleDecisionFields() {
+      setFieldsDisabled($('dec-fields'), !$('dec-enabled').checked);
+    }
+
+    // toggleAuthBadge 鉴权关闭时给出提示徽标
+    function toggleAuthBadge() {
+      $('auth-off').hidden = $('auth-enabled').checked;
+    }
+
+    // fill 把服务端配置填进表单
+    function fill(c) {
+      $('addr').value = c.server.addr || '';
+      $('mode').value = c.server.mode || 'release';
+      $('workers').value = c.server.workers || 4;
+      $('loglevel').value = c.log.level || 'info';
+
+      const ai = c.ai || {};
+      $('timeout').value = ai.timeout || 60;
+      $('image-timeout').value = ai.image_timeout || 30;
+      $('max-retries').value = ai.max_retries ?? 2;
+      $('max-image-bytes').value = ai.max_image_bytes || 10485760;
+      $('temperature').value = ai.temperature ?? 0.2;
+      $('top-p').value = ai.top_p ?? 0.9;
+      $('mock').checked = !!ai.mock;
+      $('allow-private').checked = !!ai.allow_private_urls;
+      $('keywords').value = joinLines(ai.disabled_thinking_keywords);
+
+      const def = findChannel(c, 'default') || {};
+      $('d-type').value = def.type || 'openai-chat';
+      $('d-base-url').value = def.base_url || '';
+      $('d-api-key').value = def.api_key || '';
+      $('d-models').value = joinLines(def.models);
+
+      const backup = findChannel(c, 'backup');
+      $('b-enabled').checked = !!backup;
+      $('b-type').value = (backup && backup.type) || 'openai-chat';
+      $('b-base-url').value = (backup && backup.base_url) || '';
+      $('b-api-key').value = (backup && backup.api_key) || '';
+      $('b-models').value = joinLines(backup && backup.models);
+      toggleBackupFields();
+
+      const dec = ai.decision || {};
+      $('dec-enabled').checked = !!dec.enabled;
+      $('dec-base-url').value = dec.base_url || '';
+      $('dec-api-key').value = dec.api_key || '';
+      $('dec-model').value = dec.model || '';
+      $('dec-resolution').value = dec.resolution || 'high';
+      $('dec-timeout').value = dec.timeout || 30;
+      toggleDecisionFields();
+
+      $('auth-enabled').checked = !!(c.auth && c.auth.enabled);
+      toggleAuthBadge();
+      apiKeys = ((c.auth && c.auth.api_keys) || []).slice();
+      renderKeys();
+
+      $('admin-username').value = (c.admin && c.admin.username) || '';
+      setWho((c.admin && c.admin.username) || '账号');
+      syncSelects();
+      refreshTestOptions();
+    }
+
+    // collect 按分区组装提交体（结构与后端对应分区结构体对齐）
+    function collect(section) {
+      switch (section) {
+        case 'base':
+          return {
+            server: { addr: val('addr'), mode: pick('mode'), workers: num('workers') },
+            log: { level: pick('loglevel') },
+            ai: {
+              timeout: num('timeout'),
+              image_timeout: num('image-timeout'),
+              max_retries: num('max-retries'),
+              max_image_bytes: num('max-image-bytes'),
+              temperature: num('temperature'),
+              top_p: num('top-p'),
+              mock: $('mock').checked,
+              allow_private_urls: $('allow-private').checked,
+              disabled_thinking_keywords: splitList($('keywords').value),
+            },
+          };
+
+        case 'channel': {
+          const channels = [{
+            id: 'default',
+            type: pick('d-type'),
+            base_url: val('d-base-url'),
+            api_key: val('d-api-key'),
+            models: splitList($('d-models').value),
+          }];
+          if ($('b-enabled').checked) {
+            channels.push({
+              id: 'backup',
+              type: pick('b-type'),
+              base_url: val('b-base-url'),
+              api_key: val('b-api-key'),
+              models: splitList($('b-models').value),
+            });
+          }
+          return { channels };
+        }
+
+        case 'decision':
+          return {
+            decision: {
+              enabled: $('dec-enabled').checked,
+              base_url: val('dec-base-url'),
+              api_key: val('dec-api-key'),
+              model: val('dec-model'),
+              resolution: pick('dec-resolution'),
+              timeout: num('dec-timeout'),
+            },
+          };
+
+        case 'key':
+          return { auth: { enabled: $('auth-enabled').checked, api_keys: apiKeys.slice() } };
+
+        default:
+          return {};
+      }
+    }
+
+    // renderKeys 渲染密钥表格（textContent 避免 XSS）
+    function renderKeys() {
+      const tbody = $('key-rows');
+      tbody.textContent = '';
+      $('key-count').textContent = apiKeys.length ? '共 ' + apiKeys.length + ' 个密钥' : '';
+
+      if (!apiKeys.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        td.className = 'hint';
+        td.textContent = '暂无密钥';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+
+      apiKeys.forEach((key, index) => {
+        const tr = document.createElement('tr');
+
+        const tdKey = document.createElement('td');
+        tdKey.className = 'mono';
+        tdKey.textContent = key;
+
+        const tdAction = document.createElement('td');
+        tdAction.className = 'align-right';
+        const btn = document.createElement('button');
+        btn.className = 'outline';
+        btn.dataset.variant = 'danger';
+        btn.dataset.index = String(index);
+        btn.textContent = '删除';
+        tdAction.appendChild(btn);
+
+        tr.appendChild(tdKey);
+        tr.appendChild(tdAction);
+        tbody.appendChild(tr);
+      });
+    }
+
+    // save 保存当前分区（只提交本页字段，其它分区不受影响）
+    async function save() {
+      const section = currentSection();
+      if (!SAVEABLE.includes(section)) return;
+
+      const btn = $('save-btn');
+      btn.setAttribute('aria-busy', 'true');
+      btn.disabled = true;
+      try {
+        const saved = await apiCall('/admin/api/config/' + section, {
+          method: 'PUT',
+          body: collect(section),
+        });
+        cfg = saved;
+        DIRTY[section] = false;
+        refreshTestOptions();
+        setSaveResult(SECTIONS[section] + ' 已保存，重启服务后生效', 'success');
+      } catch (err) {
+        setSaveResult(err.message, 'error');
+      } finally {
+        btn.removeAttribute('aria-busy');
+        renderDirtyState();
+      }
+    }
+
+    // 启动：拉取状态与配置
+    (async function boot() {
+      try {
+        const st = await apiCall('/admin/api/status');
+        if (!st.authenticated) {
+          window.location.href = '/admin/login';
+          return;
+        }
+        $('version').textContent = st.version || 'v-';
+        setWho(st.username || '账号');
+        cfg = await apiCall('/admin/api/config');
+        fill(cfg);
+        showSection(window.location.hash.slice(1));
+        renderDirtyState();
+      } catch (err) {
+        showMsg($('msg'), err.message);
+      }
+    })();
+
+    // 分区切换：hash 变化即切换（侧栏链接与「修改密码」菜单都走这里）
+    window.addEventListener('hashchange', () => showSection(window.location.hash.slice(1)));
+
+    // 任意表单改动都标记对应分区为未保存
+    SAVEABLE.forEach((section) => {
+      $('panel-' + section).addEventListener('input', () => markDirty(section));
+      $('panel-' + section).addEventListener('change', () => markDirty(section));
+    });
+
+    // 开关联动
+    $('b-enabled').addEventListener('change', toggleBackupFields);
+    $('dec-enabled').addEventListener('change', toggleDecisionFields);
+    $('auth-enabled').addEventListener('change', toggleAuthBadge);
+
+    $('save-btn').addEventListener('click', save);
+
+    // 随机生成密钥（sk- + 32 位十六进制），只填入输入框，不直接入库
+    $('gen-key-btn').addEventListener('click', () => {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      const key = 'sk-' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+      $('new-key').value = key;
+      $('new-key').focus();
+      $('new-key').select();
+      showMsg($('msg'), '', '');
+    });
+
+    // 密钥：添加 / 删除
+    $('add-key-btn').addEventListener('click', () => {
+      const key = val('new-key');
+      if (!key) {
+        showMsg($('msg'), '请先输入 API Key', 'warning');
+        return;
+      }
+      if (apiKeys.includes(key)) {
+        showMsg($('msg'), '该 API Key 已存在', 'warning');
+        return;
+      }
+      apiKeys.push(key);
+      $('new-key').value = '';
+      showMsg($('msg'), '', '');
+      renderKeys();
+      markDirty('key');
+    });
+    $('new-key').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        $('add-key-btn').click();
+      }
+    });
+    $('key-rows').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-index]');
+      if (!btn) return;
+      apiKeys.splice(Number(btn.dataset.index), 1);
+      renderKeys();
+      markDirty('key');
+    });
+
+    // ---------- 接口调试 ----------
+
+    let testFileBase64 = '';
+    let testFileName = '';
+
+    // addMenuItem 往 ot-dropdown 里追加一个选项
+    function addMenuItem(menu, value, label) {
+      const item = document.createElement('button');
+      item.setAttribute('role', 'menuitem');
+      item.dataset.value = value;
+      item.textContent = label;
+      menu.appendChild(item);
+    }
+
+    // formatBytes 人类可读的文件大小
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    // base64FromBytes 分块编码，避免大文件时 String.fromCharCode 爆栈
+    function base64FromBytes(bytes) {
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    }
+
+    // testFileHint 文件输入的默认提示（带上限）
+    function testFileHint() {
+      const max = (cfg && cfg.ai && cfg.ai.max_image_bytes) || 10485760;
+      return '支持常见图片格式 · 上限 ' + formatBytes(max);
+    }
+
+    // refreshTestOptions 用当前配置填充模型 / 密钥下拉
+    function refreshTestOptions() {
+      if (!cfg) return;
+
+      const modelMenu = $('menu-test-model');
+      modelMenu.textContent = '';
+      addMenuItem(modelMenu, '', '自动（不指定）');
+      ((cfg.ai && cfg.ai.channels) || []).forEach((ch) => {
+        (ch.models || []).forEach((m) => addMenuItem(modelMenu, ch.id + '/' + m, ch.id + '/' + m));
+      });
+
+      const keyMenu = $('menu-test-key');
+      keyMenu.textContent = '';
+      addMenuItem(keyMenu, '', '不带鉴权');
+      const keys = (cfg.auth && cfg.auth.api_keys) || [];
+      keys.forEach((k) => addMenuItem(keyMenu, k, k));
+
+      // 鉴权已开启时默认带第一个 Key，方便直接发送
+      $('test-key').value = cfg.auth && cfg.auth.enabled && keys.length ? keys[0] : '';
+
+      // 文件提示保持「上限」信息，不与浏览器原生文案重复
+      $('test-file-info').textContent = testFileHint();
+
+      syncSelects();
+      updateTestState();
+    }
+
+    function testApi() {
+      return $('test-api').value || 'analyze';
+    }
+
+    function testSource() {
+      const checked = document.querySelector('input[name=test-src]:checked');
+      return checked ? checked.value : 'url';
+    }
+
+    // testPayload 组装与页面发送一致的请求体
+    function testPayload() {
+      const payload = {};
+      if (testSource() === 'url') {
+        const url = $('test-url').value.trim();
+        if (!url) return null;
+        payload.image_url = url;
+      } else {
+        if (!testFileBase64) return null;
+        payload.image_base64 = testFileBase64;
+      }
+
+      if (testApi() === 'analyze') {
+        const model = $('test-model').value;
+        if (model) {
+          payload.model = model;
+        } else if ($('test-lb').checked) {
+          payload.load_balance = true;
+        }
+      }
+      return payload;
+    }
+
+    // updateTestState 切换字段显隐、按钮状态并重画 curl
+    function updateTestState() {
+      const api = testApi();
+      const src = testSource();
+
+      $('test-api-hint').textContent = 'POST /api/v1/image/' + api;
+      $('test-url-field').hidden = src !== 'url';
+      $('test-file-field').hidden = src !== 'file';
+      $('test-model-field').hidden = api !== 'analyze';
+
+      const modelChosen = !!$('test-model').value;
+      $('test-lb').disabled = modelChosen;
+      if (modelChosen) $('test-lb').checked = false;
+
+      const payload = testPayload();
+      $('test-send').disabled = !payload;
+      $('test-send-hint').textContent = payload ? '' : '请先填写 URL 或选择图片';
+
+      renderTestCurl();
+    }
+
+    // shellQuote 单引号包裹 + 转义（POSIX shell）
+    function shellQuote(text) {
+      return "'" + String(text).replace(/'/g, "'\\''") + "'";
+    }
+
+    // renderTestCurl 生成与页面发送等价的 curl 命令
+    function renderTestCurl() {
+      const api = testApi();
+      const endpoint = window.location.origin + '/api/v1/image/' + api;
+      const key = $('test-key').value;
+      const src = testSource();
+      const payload = testPayload();
+
+      if (!payload) {
+        $('test-curl').textContent = '# 填写图片 URL 或选择文件后生成命令';
+        return;
+      }
+
+      const lines = [];
+      if (src === 'file') {
+        lines.push('IMG=$(base64 -w0 ./' + (testFileName || 'photo.jpg') + ')');
+      }
+      lines.push('curl -X POST ' + shellQuote(endpoint) + ' \\');
+      lines.push("  -H 'Content-Type: application/json' \\");
+      if (key) lines.push('  -H ' + shellQuote('Authorization: Bearer ' + key) + ' \\');
+      if (src === 'file') {
+        lines.push('  -d "{\\"image_base64\\":\\"$IMG\\"}"');
+      } else {
+        lines.push('  -d ' + shellQuote(JSON.stringify(payload)));
+      }
+      $('test-curl').textContent = lines.join('\n');
+    }
+
+    // sendTest 用同一份请求体直接调用对外接口
+    async function sendTest() {
+      const payload = testPayload();
+      if (!payload) return;
+
+      const headers = { 'Content-Type': 'application/json' };
+      const key = $('test-key').value;
+      if (key) headers.Authorization = 'Bearer ' + key;
+
+      const btn = $('test-send');
+      btn.setAttribute('aria-busy', 'true');
+      btn.disabled = true;
+      const started = performance.now();
+      try {
+        const resp = await fetch('/api/v1/image/' + testApi(), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+        const elapsed = Math.round(performance.now() - started);
+        const text = await resp.text();
+
+        let body = text;
+        let code = null;
+        try {
+          const parsed = JSON.parse(text);
+          body = JSON.stringify(parsed, null, 2);
+          code = parsed.code;
+        } catch (_) {
+          // 非 JSON 响应（如 404 页面）原样展示
+        }
+        $('test-result-meta').textContent =
+          'HTTP ' + resp.status + ' · ' + elapsed + ' ms' + (code === null ? '' : ' · code=' + code);
+        $('test-result').textContent = body;
+      } catch (err) {
+        $('test-result-meta').textContent = '请求失败';
+        $('test-result').textContent = String(err);
+      } finally {
+        $('test-result-card').hidden = false;
+        btn.removeAttribute('aria-busy');
+        updateTestState();
+      }
+    }
+
+    // 调试页事件绑定
+    $('test-api').addEventListener('change', updateTestState);
+    $('test-model').addEventListener('change', updateTestState);
+    $('test-key').addEventListener('change', renderTestCurl);
+    $('test-lb').addEventListener('change', updateTestState);
+    $('test-url').addEventListener('input', updateTestState);
+    document.querySelectorAll('input[name=test-src]').forEach((radio) => {
+      radio.addEventListener('change', updateTestState);
+    });
+
+    $('test-file').addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      testFileBase64 = '';
+      testFileName = '';
+      if (!file) {
+        $('test-file-info').textContent = testFileHint();
+        updateTestState();
+        return;
+      }
+
+      const max = (cfg && cfg.ai && cfg.ai.max_image_bytes) || 10485760;
+      if (file.size > max) {
+        e.target.value = '';
+        $('test-file-info').textContent =
+          file.name + ' · ' + formatBytes(file.size) + ' 超过上限 ' + formatBytes(max) + '，请换一张';
+        updateTestState();
+        return;
+      }
+
+      const buffer = await file.arrayBuffer();
+      testFileBase64 = base64FromBytes(new Uint8Array(buffer));
+      testFileName = file.name.replace(/[^\w.\-]/g, '_');
+      $('test-file-info').textContent =
+        file.name + ' · ' + formatBytes(file.size) + ' · 上限 ' + formatBytes(max);
+      updateTestState();
+    });
+
+    $('test-copy').addEventListener('click', async () => {
+      const text = $('test-curl').textContent;
+      if (!text || text.startsWith('#')) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        $('test-copy').textContent = '已复制';
+        setTimeout(() => {
+          $('test-copy').textContent = '复制';
+        }, 1500);
+      } catch (_) {
+        showMsg($('msg'), '复制失败，请手动选中命令复制', 'warning');
+      }
+    });
+
+    $('test-send').addEventListener('click', sendTest);
+
+    // 配置页的「去接口调试」链接：带上要调试的接口
+    document.querySelectorAll('[data-test-api]').forEach((link) => {
+      link.addEventListener('click', () => {
+        const api = link.dataset.testApi;
+        $('test-api').value = api;
+        applySelect($('test-api').closest('ot-dropdown'), api);
+        updateTestState();
+      });
+    });
+
+    // 修改密码
+    $('password-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if ($('new-password').value !== $('confirm-password').value) {
+        showMsg($('msg'), '两次输入的新密码不一致', 'warning');
+        return;
+      }
+      const btn = e.target.querySelector('button[type=submit]');
+      btn.setAttribute('aria-busy', 'true');
+      btn.disabled = true;
+      try {
+        await apiCall('/admin/api/password', {
+          method: 'POST',
+          body: {
+            current_password: $('cur-password').value,
+            new_password: $('new-password').value,
+          },
+        });
+        e.target.reset();
+        showMsg($('msg'), '密码已修改，其它会话已失效。', 'success');
+      } catch (err) {
+        showMsg($('msg'), err.message);
+      } finally {
+        btn.removeAttribute('aria-busy');
+        btn.disabled = false;
+      }
+    });
+
+    // 右上角账号菜单
+    $('goto-account').addEventListener('click', () => {
+      $('user-menu').hidePopover();
+      window.location.hash = '#account';
+    });
+
+    $('logout-btn').addEventListener('click', async () => {
+      $('user-menu').hidePopover();
+      try {
+        await apiCall('/admin/api/logout', { method: 'POST' });
+      } catch (_) {
+        // 会话已失效也直接回登录页
+      }
+      window.location.href = '/admin/login';
+    });
+  </script>
+</body>
+</html>

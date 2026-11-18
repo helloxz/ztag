@@ -19,6 +19,7 @@ type Handlers struct {
 	Health   *handler.HealthHandler   // 健康检查
 	Image    *handler.ImageHandler    // 图片分析
 	Decision *handler.DecisionHandler // 场景决策
+	Admin    *handler.AdminHandler    // Web 管理台
 }
 
 // SetupRouter 构建并返回配置好的 gin 引擎，注册全部路由与中间件。
@@ -57,6 +58,36 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 		v1.POST("/image/analyze", hs.Image.Analyze)
 		// 场景决策：仅识别场景并给出 0~100 风险评分（Gemini Decision 1）
 		v1.POST("/image/decision", hs.Decision.Evaluate)
+	}
+
+	// ============ Web 管理台（/admin） ============
+	// 与对外 API 分开鉴权：管理台走登录会话（Cookie），不使用 API Key。
+	admin := r.Group("/admin")
+	{
+		// 页面：未初始化 → /admin/init，未登录 → /admin/login，均由 handler 重定向
+		admin.GET("", hs.Admin.ManagePage)
+		admin.GET("/init", hs.Admin.InitPage)
+		admin.GET("/login", hs.Admin.LoginPage)
+		admin.GET("/assets/:name", hs.Admin.Asset)
+
+		api := admin.Group("/api")
+		{
+			// 无需登录：状态探测、初始化、登录
+			api.GET("/status", hs.Admin.Status)
+			api.POST("/init", hs.Admin.Init)
+			api.POST("/login", hs.Admin.Login)
+
+			// 需要登录会话
+			authed := api.Group("", middleware.AdminSession(hs.Admin.ValidSession))
+			authed.POST("/logout", hs.Admin.Logout)
+			authed.GET("/config", hs.Admin.GetConfig)
+			// 按分区保存：只覆盖本分区的字段，其余配置保持不变
+			authed.PUT("/config/base", hs.Admin.SaveBase)
+			authed.PUT("/config/channel", hs.Admin.SaveChannels)
+			authed.PUT("/config/decision", hs.Admin.SaveDecision)
+			authed.PUT("/config/key", hs.Admin.SaveAuth)
+			authed.POST("/password", hs.Admin.ChangePassword)
+		}
 	}
 
 	return r
