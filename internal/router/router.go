@@ -70,35 +70,39 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 
 	// ============ Web 管理台（/admin） ============
 	// 与对外 API 分开鉴权：管理台走登录会话（Cookie），不使用 API Key。
-	admin := r.Group("/admin")
-	{
-		// 页面：未初始化 → /admin/init，未登录 → /admin/login，均由 handler 重定向
-		admin.GET("", hs.Admin.ManagePage)
-		admin.GET("/init", hs.Admin.InitPage)
-		admin.GET("/login", hs.Admin.LoginPage)
-		admin.GET("/assets/:name", hs.Admin.Asset)
-
-		api := admin.Group("/api")
+	// admin.enabled = false 时整组不注册：页面、接口与静态资源统一返回 404，
+	// 不暴露管理台存在性（不返回 403）；该开关不热加载，修改后需重启生效。
+	if cfg.Admin.Enabled {
+		admin := r.Group("/admin")
 		{
-			// 无需登录：状态探测、初始化、登录
-			api.GET("/status", hs.Admin.Status)
-			api.POST("/init", hs.Admin.Init)
-			api.POST("/login", hs.Admin.Login)
+			// 页面：未初始化 → /admin/init，未登录 → /admin/login，均由 handler 重定向
+			admin.GET("", hs.Admin.ManagePage)
+			admin.GET("/init", hs.Admin.InitPage)
+			admin.GET("/login", hs.Admin.LoginPage)
+			admin.GET("/assets/:name", hs.Admin.Asset)
 
-			// 需要登录会话
-			authed := api.Group("", middleware.AdminSession(hs.Admin.ValidSession))
-			authed.POST("/logout", hs.Admin.Logout)
-			authed.GET("/config", hs.Admin.GetConfig)
-			// API 文档：服务端抓取并缓存 24 小时
-			authed.GET("/docs", hs.Admin.Docs)
-			// 按分区保存：只覆盖本分区的字段，其余配置保持不变
-			authed.PUT("/config/base", hs.Admin.SaveBase)
-			authed.PUT("/config/channel", hs.Admin.SaveChannels)
-			authed.PUT("/config/decision", hs.Admin.SaveDecision)
-			authed.PUT("/config/key", hs.Admin.SaveAuth)
-			authed.POST("/password", hs.Admin.ChangePassword)
-			// 重启：响应返回后进程退出，由容器编排拉起新实例
-			authed.POST("/restart", hs.Admin.Restart)
+			api := admin.Group("/api")
+			{
+				// 无需登录：状态探测、初始化、登录
+				api.GET("/status", hs.Admin.Status)
+				api.POST("/init", hs.Admin.Init)
+				api.POST("/login", hs.Admin.Login)
+
+				// 需要登录会话
+				authed := api.Group("", middleware.AdminSession(hs.Admin.ValidSession))
+				authed.POST("/logout", hs.Admin.Logout)
+				authed.GET("/config", hs.Admin.GetConfig)
+				// API 文档：服务端抓取并缓存 24 小时
+				authed.GET("/docs", hs.Admin.Docs)
+				// 按分区保存：只覆盖本分区的字段，其余配置保持不变
+				authed.PUT("/config/base", hs.Admin.SaveBase)
+				authed.PUT("/config/channel", hs.Admin.SaveChannels)
+				authed.PUT("/config/decision", hs.Admin.SaveDecision)
+				authed.PUT("/config/key", hs.Admin.SaveAuth)
+				authed.POST("/password", hs.Admin.ChangePassword)
+				// 重启：响应返回后进程退出，由容器编排拉起新实例
+				authed.POST("/restart", hs.Admin.Restart)
+			}
 		}
 	}
 

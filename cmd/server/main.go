@@ -73,13 +73,13 @@ func main() {
 	// 指向 internal/webui/web，改完页面刷新即可生效，无需重启服务。
 	if webDir := os.Getenv("ZTAG_WEB_DIR"); webDir != "" {
 		if err := webui.UseDir(webDir); err != nil {
-			slog.Warn("failed to serve admin assets from disk, using embedded assets",
+			slog.Warn("failed to serve web assets from disk, using embedded assets",
 				"dir", webDir, "err", err)
 		} else {
-			slog.Info("admin assets served from disk", "dir", webDir)
+			slog.Info("web assets served from disk", "dir", webDir)
 		}
 	} else {
-		slog.Info("admin assets served from embedded binary")
+		slog.Info("web assets served from embedded binary")
 	}
 
 	// ---------- 3. 构建核心依赖（由下至上） ----------
@@ -110,8 +110,10 @@ func main() {
 	}
 
 	// ---------- 4. 构建路由并启动 HTTP 服务 ----------
-	// 管理台未初始化时给出明确入口提示（首次访问 /admin 会引导设置账号密码）
-	if !cfg.Admin.IsInitialized() {
+	// 管理台关闭时 /admin 整组不注册（404）；开启且未初始化时给出明确入口提示
+	if !cfg.Admin.Enabled {
+		slog.Info("admin console disabled (admin.enabled = false), /admin will return 404")
+	} else if !cfg.Admin.IsInitialized() {
 		slog.Info("admin console is not initialized, open /admin to set username and password",
 			"addr", cfg.Server.Addr)
 	}

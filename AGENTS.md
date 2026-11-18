@@ -39,6 +39,6 @@ router → handler → service → ai
 - 图片预处理统一走 `internal/service/image_prepare.go` 的 `ImagePreparer`（两个接口共用同一并发信号量）
 - 根路径 `/` 为运行状态页（不暴露 /admin 入口），`/favicon.ico` 返回 204；`/healthz` 返回 `status / version / started_at`（进程启动时间，管理台重启后据此判断新实例已起）
 - 管理台重启：`POST /admin/api/restart`（需登录会话，原子去重，重复请求 409）；响应写回后 500ms 触发 main 的优雅退出，进程退出码 0，依赖 docker/k8s 的重启策略拉起
-- Web 管理台：入口 `/admin`（与 API 同端口，独立会话鉴权，不使用 API Key）。`[admin] username / password_hash`（bcrypt）未设置时进入初始化页；账号密码改动立即生效，其余配置保存后需重启。配置按分区保存（`PUT /admin/api/config/{base|channel|decision|key}`，只覆盖本分区字段），落盘为覆盖式整体重写（go-toml ↔ viper 同一后端，不保留注释），写前跑同一套 `Validate()`，文件权限 0600。`base` 分区只覆盖 timeout/image_timeout/max_retries/max_image_bytes；`temperature`/`top_p`/`mock`/`allow_private_urls` 仅支持改配置文件，`disabled_thinking_keywords` 归 `channel` 分区（图像分析页）维护
+- Web 管理台：入口 `/admin`（与 API 同端口，独立会话鉴权，不使用 API Key）。`[admin] enabled`（默认 true）控制整组路由是否注册：false 时页面/接口/静态资源统一 404（不返回 403），仅支持改配置文件、重启生效，关闭后重启接口也不可用；`[admin] username / password_hash`（bcrypt）未设置时进入初始化页（`Init` 必须逐字段赋值，不可整体替换 Admin 结构体，否则会把 enabled 重置）。账号密码改动立即生效，其余配置保存后需重启。配置按分区保存（`PUT /admin/api/config/{base|channel|decision|key}`，只覆盖本分区字段），落盘为覆盖式整体重写（go-toml ↔ viper 同一后端，不保留注释），写前跑同一套 `Validate()`，文件权限 0600。`base` 分区只覆盖 timeout/image_timeout/max_retries/max_image_bytes；`temperature`/`top_p`/`mock`/`allow_private_urls` 仅支持改配置文件，`disabled_thinking_keywords` 归 `channel` 分区（图像分析页）维护
 - 本机 `:8080` / `:18080` 可能被环境占用，本地验证建议换端口
 - 路线图：真实模型接入 → 图片下载/校验助手 → 渠道失败切换 → 限流落地 → 分类阈值可配置

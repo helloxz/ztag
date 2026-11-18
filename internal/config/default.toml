@@ -107,10 +107,12 @@ resolution = "high"                                    # 图片分辨率：low |
 # model = "openai/gpt-6-luna-decisions"
 # resolution = "high"                                  # 映射为 OpenAI 的 detail：low→low / medium→auto / high→high / ultra_high→original
 
-# ---------------- Web 管理台管理员账号 ----------------
+# ---------------- Web 管理台（/admin） ----------------
 # 访问 http://<addr>/admin 可在线管理配置、渠道与 API 密钥。
 # 首次访问会引导初始化账号，初始化后由管理台自动写回本段；
 # password_hash 为 bcrypt 哈希（不可逆），请勿手工填写明文密码。
 [admin]
+enabled = true       # 是否启用 Web 管理台：false 时 /admin 页面、接口与静态资源全部 404（增强安全，适合生产）
+                     # 仅支持改配置文件，需重启生效；关闭后如需再改配置，请手工编辑本文件后重启
 username = ""        # 管理员用户名，留空表示未初始化
 password_hash = ""   # 密码哈希（bcrypt），留空表示未初始化

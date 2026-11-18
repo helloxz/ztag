@@ -4,12 +4,108 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ZTAG · 服务运行中</title>
-  <link rel="stylesheet" href="/admin/assets/oat.min.css">
-  <link rel="stylesheet" href="/admin/assets/app.css">
+  <!-- 落地页自带样式：不依赖管理台静态资源，管理台关闭时也能正常展示 -->
+  <style>
+    :root {
+      color-scheme: light dark;
+      --background: light-dark(#fff, #09090b);
+      --foreground: light-dark(#262626, #e5e5e5);
+      --card: light-dark(#fff, #18181b);
+      --muted: light-dark(#f4f4f5, #27272a);
+      --muted-foreground: light-dark(#71717a, #a1a1aa);
+      --border: light-dark(#e4e4e7, #303036);
+      --success: light-dark(#008032, #6cc070);
+      --font-sans: system-ui, sans-serif;
+      --font-mono: ui-monospace, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      min-height: 100dvh;
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: var(--font-sans);
+      font-size: 1rem;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    p { margin-block-end: 1rem; }
+    p:last-child { margin-block-end: 0; }
+
+    a {
+      color: var(--foreground);
+      text-decoration: none;
+      text-underline-offset: 2px;
+    }
+    a:hover { text-decoration: underline; }
+
+    code {
+      padding: .1em .3em;
+      border-radius: .25rem;
+      background-color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: .9em;
+    }
+
+    .home-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      padding: 1rem;
+    }
+
+    .home-card {
+      width: min(100%, 34rem);
+      padding: 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: .25rem;
+      background-color: var(--card);
+      box-shadow: 0 1px 2px rgb(0 0 0 / .06);
+      text-align: center;
+    }
+
+    .home-brand {
+      font-size: clamp(1.5rem, 1.3rem + .8vw, 1.875rem);
+      font-weight: 600;
+      letter-spacing: .04em;
+    }
+
+    .home-status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+      margin-block: .75rem .5rem;
+      font-size: .875rem;
+      color: var(--success);
+    }
+
+    .home-dot {
+      display: inline-block;
+      width: .5rem;
+      height: .5rem;
+      border-radius: 50%;
+      background-color: var(--success);
+    }
+
+    .home-desc {
+      margin-block-start: 1rem;
+      color: var(--muted-foreground);
+      font-size: .875rem;
+    }
+
+    .home-links {
+      margin-block-start: 1.25rem;
+      font-size: .875rem;
+    }
+  </style>
 </head>
 <body>
-  <div class="auth-wrap">
-    <div class="card home-card">
+  <div class="home-wrap">
+    <div class="home-card">
       <div class="home-brand">ZTAG</div>
       <p class="home-status"><span class="home-dot" aria-hidden="true"></span>服务运行中</p>
       <p class="home-desc">

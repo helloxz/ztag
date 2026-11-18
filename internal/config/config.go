@@ -198,6 +198,8 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("ai.decision.enabled", false)
 	v.SetDefault("ai.decision.timeout", DefaultDecisionTimeout)
 	v.SetDefault("ai.decision.max_text_chars", DefaultDecisionMaxTextChars)
+	// 管理台默认开启；关闭需改配置文件并重启（无热加载，避免误操作立即自锁）
+	v.SetDefault("admin.enabled", true)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)

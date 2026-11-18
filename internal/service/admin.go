@@ -82,7 +82,9 @@ func (s *AdminService) Init(username, password string) (string, error) {
 	}
 
 	candidate := s.cfg
-	candidate.Admin = config.AdminConfig{Username: username, PasswordHash: string(hash)}
+	// 逐字段赋值，保留 enabled 等其它管理台配置（整体替换会把 enabled 重置为 false）
+	candidate.Admin.Username = username
+	candidate.Admin.PasswordHash = string(hash)
 	if err := config.Save(s.path, &candidate); err != nil {
 		return "", model.NewBizError(err.Error())
 	}
