@@ -17,6 +17,7 @@ import (
 // 新增业务模块时，在此追加对应 handler 字段并在 main 中注入。
 type Handlers struct {
 	Health   *handler.HealthHandler   // 健康检查
+	Home     *handler.HomeHandler     // 根路径落地页
 	Image    *handler.ImageHandler    // 图片分析
 	Decision *handler.DecisionHandler // 场景决策
 	Admin    *handler.AdminHandler    // Web 管理台
@@ -37,6 +38,11 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 		middleware.AccessLog(), // 访问日志
 	)
 
+	// 根路径落地页：只提示服务在运行，不暴露管理台入口
+	r.GET("/", hs.Home.Index)
+	// 没有图标，直接 204，避免浏览器反复 404
+	r.GET("/favicon.ico", hs.Home.Favicon)
+
 	// 健康检查探活接口：不鉴权、不限流
 	r.GET("/healthz", hs.Health.Healthz)
 
@@ -56,8 +62,10 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 	{
 		// 图片分析：识别内容、提取关键词/描述并分类
 		v1.POST("/image/analyze", hs.Image.Analyze)
-		// 场景决策：仅识别场景并给出 0~100 风险评分（Gemini Decision 1）
+		// 风险审核（图片）：仅识别场景并给出 0~100 风险评分（决策模型）
 		v1.POST("/image/decision", hs.Decision.Evaluate)
+		// 风险审核（文本）：同一套决策模型，分类白名单与图片分开
+		v1.POST("/text/decision", hs.Decision.EvaluateText)
 	}
 
 	// ============ Web 管理台（/admin） ============
@@ -87,6 +95,8 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 			authed.PUT("/config/decision", hs.Admin.SaveDecision)
 			authed.PUT("/config/key", hs.Admin.SaveAuth)
 			authed.POST("/password", hs.Admin.ChangePassword)
+			// 重启：响应返回后进程退出，由容器编排拉起新实例
+			authed.POST("/restart", hs.Admin.Restart)
 		}
 	}
 

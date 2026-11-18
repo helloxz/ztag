@@ -46,6 +46,11 @@
         showMsg($('msg'), err.message);
       }
     });
+
+    // 管理台重启完成后会带 ?restarted=1 跳回登录页
+    if (new URLSearchParams(window.location.search).get('restarted') === '1') {
+      showMsg($('msg'), '服务已重启，请重新登录。', 'success');
+    }
   </script>
 </body>
 </html>

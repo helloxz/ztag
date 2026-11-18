@@ -23,9 +23,17 @@ type AnalyzeRequest struct {
 	ImageMIME    string `json:"-"` // 图片 MIME 类型（如 image/jpeg）
 }
 
-// DecisionRequest 场景决策请求体：只传图片，模型与渠道由服务端配置决定。
+// DecisionRequest 场景决策（图片）请求体。
+// Model 可选：指定决策渠道 id（见 ai.decision.channels），为空则由服务端轮询。
 type DecisionRequest struct {
 	ImageInput
+	Model string `json:"model"` // 可选：决策渠道 id
+}
+
+// TextDecisionRequest 场景决策（文本）请求体。
+type TextDecisionRequest struct {
+	Text  string `json:"text"`  // 待审核文本
+	Model string `json:"model"` // 可选：决策渠道 id
 }
 
 // PreparedImage 预处理完成的图片产物（下载/校验/压缩转 webp 后）。
@@ -39,6 +47,7 @@ type PreparedImage struct {
 type DecisionResult struct {
 	Category  string `json:"category"`   // 场景分类（固定枚举，见 ai 层白名单）
 	Score     int    `json:"score"`      // 风险评分 0~100：越大风险越高；99 为自然判定与普通拦截的上限，100 表示极危拦截（prohibited）
+	ModelID   string `json:"model_id"`   // 实际处理的决策渠道 id（由 ai 层填充）
 	ElapsedMs int64  `json:"elapsed_ms"` // 本次请求处理总耗时（毫秒），由 handler 层在响应前填充
 
 	// 内部字段：供 service 层记录日志，不参与对外 JSON

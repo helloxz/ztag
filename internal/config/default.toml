@@ -22,12 +22,12 @@ api_keys = []           # 允许访问的 API Key 列表，enabled=true 时生�
 timeout = 60                  # 单次 AI 调用超时（秒）
 image_timeout = 30            # 图片下载超时（秒），单次 Probe/Fetch 各自预算；缺省/非法回退 30s
 max_retries = 2               # 单渠道内失败重试次数
-mock = false                  # 是否启用模拟 AI（本地无 API Key 联调时可设 true）
+mock = false                  # 是否启用模拟 AI（本地联调用）；仅支持改配置文件，管理台不展示
 max_image_bytes = 10485760    # 图片大小上限（字节），默认 10MB
-allow_private_urls = false    # 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）
-temperature = 0.2             # 采样温度（0~2，越低输出越稳定，分类场景建议低值）
-top_p = 0.9                   # 核采样（0~1，控制随机性，0 表示不设置走模型默认）
-disabled_thinking_keywords = [  # 模型标识命中任一关键词（不区分大小写、包含匹配）时，请求显式关闭思考模式
+allow_private_urls = false    # 是否放行内网/保留地址图片（SSRF 防护，生产保持 false）；仅支持改配置文件，管理台不展示
+temperature = 0.2             # 采样温度（0~2，越低输出越稳定）；仅支持改配置文件，管理台不展示
+top_p = 0.9                   # 核采样（0~1，控制随机性，0 表示不设置走模型默认）；仅支持改配置文件，管理台不展示
+disabled_thinking_keywords = [  # 命中任一关键词（不区分大小写）时请求显式关闭思考模式；可在管理台「图像分析 → 模型行为」编辑
   "qwen",                      # Qwen3 系列（含 -Thinking 后缀变体）
   "mimo",                      # MiMo 系列（默认开启思考）
   "deepseek",                  # DeepSeek 系列（思考模型）
@@ -61,17 +61,43 @@ models = [
   "claude-3-5-sonnet",
 ]
 
-# ---------------- 场景决策模型（可选） ----------------
-# 使用 Gemini Decision 1（Decisions API）：只做场景分类与风险评分，不生成文本，
-# 因此没有 keywords/description，也没有主备切换、temperature/top_p 等参数。
-# enabled = false 或整段缺失时不影响启动，仅 POST /api/v1/image/decision 返回未配置。
+# ---------------- 风险审核（决策模型，支持多渠道） ----------------
+# 接口：
+#   POST /api/v1/image/decision   图片审核（image_url / image_base64）
+#   POST /api/v1/text/decision    文本审核（text）
+# 请求里可用 model 指定下面的渠道 id；不指定则按配置顺序轮询。
+# 某个渠道失败时：还有其它渠道就换一个再试一次，只有一个渠道就重试一次。
+#
+# type 支持两种协议：
+#   gemini-decision : Gemini Decision 1（Gemini 原生 Decisions API）
+#   openai-decision : OpenAI 兼容 Decisions API（如 Vercel AI Gateway 的 /v1/decisions）
+#
+# 输出（两个接口一致）：category + score(0~100) + model_id + elapsed_ms
+#   图片分类：normal|porn|suggestive|gore|violence|politics|gambling|drugs|terror|other_risk
+#   文本分类：normal|spam|ads|porn|politics|abuse|fraud|illegal|other_risk
+#   两者互不混用；供应商安全拦截额外返回 blocked(99) / prohibited(100)
 [ai.decision]
-enabled = false                                        # 是否启用场景决策接口
-base_url = "https://generativelanguage.googleapis.com" # 可带 /v1beta，也支持兼容网关
+enabled = false          # 总开关：false 时两个决策接口都返回未配置
+timeout = 30             # 单次调用超时（秒），<=0 回退 30s
+max_text_chars = 4000    # 文本审核字符上限，超长直接报错
+
+[[ai.decision.channels]]
+id = "gemini-main"       # 渠道 id：调用时 model 填这个值；小写字母/数字/下划线/中划线，需唯一
+type = "gemini-decision" # 协议类型
+enabled = true           # 单渠道开关
+base_url = "https://generativelanguage.googleapis.com" # 实际请求 {base_url}/v1beta/decisions
 api_key = "replace-with-your-gemini-api-key"           # 请求头 x-goog-api-key
-model = "gemini-decision-1"                            # 模型标识
+model = "gemini-decision-1"                            # 上游模型标识
 resolution = "high"                                    # 图片分辨率：low | medium | high | ultra_high
-timeout = 30                                           # 单次调用超时（秒），<=0 回退 30s
+
+[[ai.decision.channels]]
+id = "openai-main"
+type = "openai-decision"
+enabled = true
+base_url = "https://ai-gateway.vercel.sh/v1"           # 实际请求 {base_url}/decisions
+api_key = "replace-with-your-ai-gateway-key"           # 请求头 Authorization: Bearer
+model = "openai/gpt-6-luna-decisions"
+resolution = "high"                                    # 映射为 OpenAI 的 detail：low→low / medium→auto / high→high / ultra_high→original
 
 # ---------------- Web 管理台管理员账号 ----------------
 # 访问 http://<addr>/admin 可在线管理配置、渠道与 API 密钥。

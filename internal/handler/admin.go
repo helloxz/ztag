@@ -5,11 +5,14 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/helloxz/ztag/internal/helper"
 	"github.com/helloxz/ztag/internal/middleware"
+	"github.com/helloxz/ztag/internal/model"
 	"github.com/helloxz/ztag/internal/service"
 	"github.com/helloxz/ztag/internal/version"
 	"github.com/helloxz/ztag/internal/webui"
@@ -18,12 +21,14 @@ import (
 // AdminHandler 管理台表现层：页面路由 + 管理 JSON 接口。
 // 业务逻辑全部在 service.AdminService，这里只做参数解析、Cookie 下发与响应封装。
 type AdminHandler struct {
-	svc *service.AdminService
+	svc        *service.AdminService
+	restart    func()      // 触发进程优雅退出（由 main 注入，退出后由容器编排拉起）
+	restarting atomic.Bool // 防止并发重复重启
 }
 
-// NewAdminHandler 构建管理台处理器。
-func NewAdminHandler(svc *service.AdminService) *AdminHandler {
-	return &AdminHandler{svc: svc}
+// NewAdminHandler 构建管理台处理器。restart 为空表示当前运行环境不支持重启。
+func NewAdminHandler(svc *service.AdminService, restart func()) *AdminHandler {
+	return &AdminHandler{svc: svc, restart: restart}
 }
 
 // ValidSession 供管理台会话中间件复用（避免中间件反向依赖 service 包）。
@@ -243,6 +248,33 @@ func (h *AdminHandler) ChangePassword(c *gin.Context) {
 	}
 	h.setSessionCookie(c, token)
 	helper.OK(c, gin.H{"changed": true})
+}
+
+// Restart 处理 POST /admin/api/restart：先确认响应已写回，再触发进程优雅退出。
+//
+// 进程退出码为 0，依赖 docker / k8s 的自动重启策略拉起新实例；
+// 裸进程部署点击后服务会直接停止，前端会在确认弹窗里提示这一点。
+func (h *AdminHandler) Restart(c *gin.Context) {
+	if h.restart == nil {
+		helper.Fail(c, "restart is not available")
+		return
+	}
+	if !h.restarting.CompareAndSwap(false, true) {
+		c.JSON(http.StatusConflict, gin.H{
+			"code": model.CodeFailed,
+			"msg":  "restart already in progress",
+			"data": nil,
+		})
+		return
+	}
+
+	helper.OK(c, gin.H{"restarting": true})
+
+	go func() {
+		// 留一点时间把响应刷回浏览器
+		time.Sleep(500 * time.Millisecond)
+		h.restart()
+	}()
 }
 
 // ---------- 内部助手 ----------

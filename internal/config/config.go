@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/spf13/viper"
 )
@@ -65,27 +66,44 @@ type AIConfig struct {
 	Decision                 DecisionConfig  `mapstructure:"decision" toml:"decision" json:"decision"`                                                       // 场景决策模型（Gemini Decision 1 / Decisions API）
 }
 
-// DecisionConfig 场景决策模型配置（Gemini Decision 1）。
+// DecisionConfig 风险审核（决策模型）配置，支持配置多个渠道。
 //
 // 与 [[ai.channels]] 的聊天渠道不同：决策模型走独立的 Decisions API，
-// 只输出分类概率与风险评分，不生成任何文本，因此不支持主备切换、
-// temperature/top_p、structured output 等参数。缺失该段时不阻断启动，
-// 仅对应接口返回 "decision model is not configured"。
+// 只输出分类概率与风险评分，不生成任何文本。请求里可用渠道 id 指定模型，
+// 不指定则按配置顺序轮询；单渠道失败时换下一个渠道再试一次。
+// 缺失该段时不阻断启动，仅决策接口返回 "decision model is not configured"。
 type DecisionConfig struct {
-	Enabled    bool   `mapstructure:"enabled" toml:"enabled" json:"enabled"`          // 是否启用场景决策接口
-	BaseURL    string `mapstructure:"base_url" toml:"base_url" json:"base_url"`       // 接口基础地址（可带 /v1beta，也可是兼容网关）
-	APIKey     string `mapstructure:"api_key" toml:"api_key" json:"api_key"`          // API Key（请求头 x-goog-api-key）
-	Model      string `mapstructure:"model" toml:"model" json:"model"`                // 模型标识，如 gemini-decision-1
-	Resolution string `mapstructure:"resolution" toml:"resolution" json:"resolution"` // 图片分辨率档位：low | medium | high | ultra_high
-	Timeout    int    `mapstructure:"timeout" toml:"timeout" json:"timeout"`          // 单次调用超时（秒），缺省/非法回退 30s
+	Enabled      bool                    `mapstructure:"enabled" toml:"enabled" json:"enabled"`                      // 总开关
+	Timeout      int                     `mapstructure:"timeout" toml:"timeout" json:"timeout"`                      // 单次调用超时（秒），缺省/非法回退 30s
+	MaxTextChars int                     `mapstructure:"max_text_chars" toml:"max_text_chars" json:"max_text_chars"` // 文本审核字符上限
+	Channels     []DecisionChannelConfig `mapstructure:"channels" toml:"channels" json:"channels"`                   // 决策渠道列表
+}
+
+// DecisionChannelConfig 单个决策渠道。
+type DecisionChannelConfig struct {
+	ID         string `mapstructure:"id" toml:"id" json:"id"`                         // 渠道 id（调用时 model 填这个值）
+	Type       string `mapstructure:"type" toml:"type" json:"type"`                   // 协议类型：gemini-decision | openai-decision
+	Enabled    bool   `mapstructure:"enabled" toml:"enabled" json:"enabled"`          // 单渠道开关
+	BaseURL    string `mapstructure:"base_url" toml:"base_url" json:"base_url"`       // 接口基础地址
+	APIKey     string `mapstructure:"api_key" toml:"api_key" json:"api_key"`          // API Key
+	Model      string `mapstructure:"model" toml:"model" json:"model"`                // 上游模型标识
+	Resolution string `mapstructure:"resolution" toml:"resolution" json:"resolution"` // 图片分辨率档位（openai 渠道会映射为 detail）
 }
 
 // 决策模型默认值。
 const (
-	DefaultDecisionBaseURL = "https://generativelanguage.googleapis.com" // 默认 Gemini API 基础地址
-	DefaultDecisionModel   = "gemini-decision-1"                         // 默认模型标识
-	DefaultDecisionTimeout = 30                                          // 默认单次调用超时（秒）
+	DefaultDecisionTimeout      = 30   // 默认单次调用超时（秒）
+	DefaultDecisionMaxTextChars = 4000 // 默认文本字符上限
 )
+
+// 决策渠道协议类型。
+const (
+	DecisionChannelTypeGemini = "gemini-decision" // Gemini Decision 1（原生 Decisions API）
+	DecisionChannelTypeOpenAI = "openai-decision" // OpenAI 兼容 Decisions API
+)
+
+// decisionChannelIDPattern 决策渠道 id 规则：小写字母/数字开头，可含下划线、中划线，最长 32。
+var decisionChannelIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 
 // 决策模型图片分辨率档位（影响 token 成本与细节识别能力）。
 const (
@@ -178,10 +196,8 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("ai.top_p", 0.9)
 	v.SetDefault("ai.disabled_thinking_keywords", DefaultDisabledThinkingKeywords)
 	v.SetDefault("ai.decision.enabled", false)
-	v.SetDefault("ai.decision.base_url", DefaultDecisionBaseURL)
-	v.SetDefault("ai.decision.model", DefaultDecisionModel)
-	v.SetDefault("ai.decision.resolution", DecisionResolutionHigh)
 	v.SetDefault("ai.decision.timeout", DefaultDecisionTimeout)
+	v.SetDefault("ai.decision.max_text_chars", DefaultDecisionMaxTextChars)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
@@ -199,6 +215,16 @@ func Load(path string) (*Config, error) {
 	// 决策模型调用超时：未配置/非法值回退 30s
 	if cfg.AI.Decision.Timeout <= 0 {
 		cfg.AI.Decision.Timeout = DefaultDecisionTimeout
+	}
+	// 文本审核字符上限：未配置/非法值回退 4000
+	if cfg.AI.Decision.MaxTextChars <= 0 {
+		cfg.AI.Decision.MaxTextChars = DefaultDecisionMaxTextChars
+	}
+	// 决策渠道的分辨率缺省回退 high（openai 渠道可省略该字段）
+	for i := range cfg.AI.Decision.Channels {
+		if cfg.AI.Decision.Channels[i].Resolution == "" {
+			cfg.AI.Decision.Channels[i].Resolution = DecisionResolutionHigh
+		}
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -266,21 +292,53 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("ai.channels must include a channel with id=\"default\"")
 	}
 
-	// 场景决策模型：仅在启用时校验必填项，未启用时允许整段缺失（兼容旧配置）
+	// 风险审核（决策模型）：仅启用时校验，未启用时允许整段缺失
 	if c.AI.Decision.Enabled {
-		if c.AI.Decision.APIKey == "" {
-			return fmt.Errorf("ai.decision.api_key must not be empty when ai.decision.enabled = true")
+		if len(c.AI.Decision.Channels) == 0 {
+			return fmt.Errorf("ai.decision.channels must not be empty when ai.decision.enabled = true")
 		}
-		if c.AI.Decision.Model == "" {
-			return fmt.Errorf("ai.decision.model must not be empty when ai.decision.enabled = true")
+		seen := make(map[string]bool, len(c.AI.Decision.Channels))
+		enabled := 0
+		for i := range c.AI.Decision.Channels {
+			ch := &c.AI.Decision.Channels[i]
+
+			if !decisionChannelIDPattern.MatchString(ch.ID) {
+				return fmt.Errorf("ai.decision.channels[%d].id must match ^[a-z0-9][a-z0-9_-]{0,31}$, got: %q", i, ch.ID)
+			}
+			if seen[ch.ID] {
+				return fmt.Errorf("decision channel id %q is duplicated", ch.ID)
+			}
+			seen[ch.ID] = true
+
+			switch ch.Type {
+			case DecisionChannelTypeGemini, DecisionChannelTypeOpenAI:
+			default:
+				return fmt.Errorf("decision channel %q type must be one of %s / %s, got: %q",
+					ch.ID, DecisionChannelTypeGemini, DecisionChannelTypeOpenAI, ch.Type)
+			}
+			if ch.BaseURL == "" {
+				return fmt.Errorf("decision channel %q base_url must not be empty", ch.ID)
+			}
+			if ch.APIKey == "" {
+				return fmt.Errorf("decision channel %q api_key must not be empty", ch.ID)
+			}
+			if ch.Model == "" {
+				return fmt.Errorf("decision channel %q model must not be empty", ch.ID)
+			}
+			switch ch.Resolution {
+			case DecisionResolutionLow, DecisionResolutionMedium, DecisionResolutionHigh, DecisionResolutionUltraHigh:
+			default:
+				return fmt.Errorf("decision channel %q resolution must be one of low / medium / high / ultra_high, got: %q", ch.ID, ch.Resolution)
+			}
+			if ch.Enabled {
+				enabled++
+			}
 		}
-		if c.AI.Decision.BaseURL == "" {
-			return fmt.Errorf("ai.decision.base_url must not be empty when ai.decision.enabled = true")
+		if enabled == 0 {
+			return fmt.Errorf("ai.decision.channels must have at least one enabled channel")
 		}
-		switch c.AI.Decision.Resolution {
-		case DecisionResolutionLow, DecisionResolutionMedium, DecisionResolutionHigh, DecisionResolutionUltraHigh:
-		default:
-			return fmt.Errorf("ai.decision.resolution must be one of low / medium / high / ultra_high, got: %q", c.AI.Decision.Resolution)
+		if c.AI.Decision.MaxTextChars <= 0 {
+			return fmt.Errorf("ai.decision.max_text_chars must be greater than 0")
 		}
 	}
 	return nil

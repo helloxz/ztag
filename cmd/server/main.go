@@ -87,17 +87,26 @@ func main() {
 	gateway := ai.NewGateway(cfg.AI)
 	preparer := service.NewImagePreparer(cfg.AI, cfg.Server.Workers)
 	imageSvc := service.NewImageService(gateway, preparer)
-	decisionSvc := service.NewDecisionService(preparer, ai.NewDecisionAnalyzer(cfg.AI))
+	decisionSvc := service.NewDecisionService(preparer, ai.NewDecisionAnalyzer(cfg.AI), cfg.AI.Decision.MaxTextChars)
 
 	// 请求体上限：base64 编码膨胀约 4/3，另留 JSON 外壳与 data URI 前缀余量
 	const maxRequestBodyExtra = 64 * 1024
 	maxRequestBody := cfg.AI.MaxImageBytes*4/3 + maxRequestBodyExtra
 
+	// 管理台「重启服务」通过该通道触发优雅退出，进程退出后由容器编排拉起
+	restartCh := make(chan struct{}, 1)
+
 	hs := &router.Handlers{
 		Health:   handler.NewHealthHandler(),
+		Home:     handler.NewHomeHandler(),
 		Image:    handler.NewImageHandler(imageSvc, maxRequestBody),
 		Decision: handler.NewDecisionHandler(decisionSvc, maxRequestBody),
-		Admin:    handler.NewAdminHandler(service.NewAdminService(cfg, cfgPath)),
+		Admin: handler.NewAdminHandler(service.NewAdminService(cfg, cfgPath), func() {
+			select {
+			case restartCh <- struct{}{}:
+			default: // 已有待处理的重启请求
+			}
+		}),
 	}
 
 	// ---------- 4. 构建路由并启动 HTTP 服务 ----------
@@ -124,8 +133,12 @@ func main() {
 	// ---------- 5. 等待退出信号，优雅关闭 ----------
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	slog.Info("shutdown signal received, closing server...")
+	select {
+	case <-quit:
+		slog.Info("shutdown signal received, closing server...")
+	case <-restartCh:
+		slog.Info("restart requested from admin console, shutting down for container restart")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

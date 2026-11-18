@@ -144,16 +144,18 @@ func (s *AdminService) ValidSession(token string) bool {
 }
 
 // BaseSection 基础配置分区的可编辑字段。
-// ai 只取标量字段，channels / decision 属于其它分区，互不覆盖。
+// 只接收管理台展示的字段；temperature / top_p / mock / allow_private_urls
+// 仅支持直接修改配置文件，这里即使传了也不会生效。
 type BaseSection struct {
 	Server config.ServerConfig `json:"server"`
 	Log    config.LogConfig    `json:"log"`
 	AI     config.AIConfig     `json:"ai"`
 }
 
-// ChannelSection 渠道分区：仅 ai.channels。
+// ChannelSection 图像分析分区：聊天渠道列表 + 关闭思考模式的关键词。
 type ChannelSection struct {
-	Channels []config.ChannelConfig `json:"channels"`
+	Channels                 []config.ChannelConfig `json:"channels"`
+	DisabledThinkingKeywords []string               `json:"disabled_thinking_keywords"`
 }
 
 // DecisionSection 场景决策分区：仅 ai.decision。
@@ -175,16 +177,15 @@ func (s *AdminService) SaveBase(p BaseSection) (config.Config, error) {
 	next.Server = p.Server
 	next.Log = p.Log
 
-	// 逐字段覆盖 AI 标量：写成整体赋值会把 channels / decision 一起清空
+	// 只覆盖管理台展示的 4 个标量。
+	// temperature / top_p / mock / allow_private_urls 以及
+	// disabled_thinking_keywords 不在这里处理：
+	//   - 前 4 项仅支持改配置文件；
+	//   - 关键词由「图像分析」分区（ChannelSection）维护。
 	next.AI.Timeout = p.AI.Timeout
 	next.AI.ImageTimeout = p.AI.ImageTimeout
 	next.AI.MaxRetries = p.AI.MaxRetries
-	next.AI.Mock = p.AI.Mock
 	next.AI.MaxImageBytes = p.AI.MaxImageBytes
-	next.AI.AllowPrivateURLs = p.AI.AllowPrivateURLs
-	next.AI.Temperature = p.AI.Temperature
-	next.AI.TopP = p.AI.TopP
-	next.AI.DisabledThinkingKeywords = p.AI.DisabledThinkingKeywords
 
 	return s.saveLocked(&next)
 }
@@ -196,6 +197,10 @@ func (s *AdminService) SaveChannels(p ChannelSection) (config.Config, error) {
 
 	next := s.cfg
 	next.AI.Channels = p.Channels
+	// nil 表示调用方未提交该字段，保持原值（空数组才是显式清空）
+	if p.DisabledThinkingKeywords != nil {
+		next.AI.DisabledThinkingKeywords = p.DisabledThinkingKeywords
+	}
 	return s.saveLocked(&next)
 }
 

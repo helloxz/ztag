@@ -18,7 +18,7 @@
       <nav>
         <ul>
           <li><a href="#base" data-section="base" aria-current="page">基础配置</a></li>
-          <li><a href="#channel" data-section="channel">图像审核</a></li>
+          <li><a href="#channel" data-section="channel">图像分析</a></li>
           <li><a href="#decision" data-section="decision">风险审核</a></li>
           <li><a href="#key" data-section="key">API 密钥</a></li>
           <li><a href="#test" data-section="test">接口调试</a></li>
@@ -53,6 +53,7 @@
             </button>
             <div id="user-menu" popover>
               <button role="menuitem" id="goto-account">修改密码</button>
+              <button role="menuitem" id="restart-btn">重启服务</button>
               <button role="menuitem" id="logout-btn">退出登录</button>
             </div>
           </ot-dropdown>
@@ -135,36 +136,11 @@
               <div data-field>
                 <label for="max-image-bytes">图片大小上限（字节）</label>
                 <input id="max-image-bytes" type="number" min="1" step="1">
-              </div>
-              <div data-field>
-                <label for="temperature">采样温度 temperature</label>
-                <input id="temperature" type="number" min="0" max="2" step="0.1">
-              </div>
-              <div data-field>
-                <label for="top-p">核采样 top_p</label>
-                <input id="top-p" type="number" min="0" max="1" step="0.05">
+                <span data-hint>修改后需重启服务</span>
               </div>
             </div>
           </section>
 
-          <section class="card">
-            <header class="card-head"><h3>模型行为</h3></header>
-            <div class="field-grid">
-              <div data-field>
-                <label class="switch-row"><input type="checkbox" role="switch" id="mock"> 启用模拟 AI（mock）</label>
-                <span data-hint>不调用真实模型，本地联调用</span>
-              </div>
-              <div data-field>
-                <label class="switch-row"><input type="checkbox" role="switch" id="allow-private"> 放行内网图片地址</label>
-                <span data-hint>SSRF 防护，生产环境保持关闭</span>
-              </div>
-            </div>
-            <div data-field class="mt-4">
-              <label for="keywords">关闭思考模式的模型关键词</label>
-              <textarea id="keywords" rows="4" placeholder="每行一个，如 qwen"></textarea>
-              <span data-hint>命中即对该模型显式关闭思考模式；留空则使用内置默认列表</span>
-            </div>
-          </section>
         </section>
 
         <!-- 渠道 -->
@@ -253,60 +229,52 @@
               </div>
             </div>
           </section>
-        </section>
-
-        <!-- 场景决策 -->
-        <section id="panel-decision" hidden>
-          <p class="page-intro">
-            调用<b>决策模型</b>只做场景分类与风险评分：不提取关键词、不生成描述，输出分类与 0~100 风险分（接口 <code>POST /api/v1/image/decision</code>）。
-            <a href="#test" data-test-api="decision">去接口调试 →</a>
-          </p>
           <section class="card">
             <header class="card-head">
-              <h3>场景决策模型</h3>
-              <span class="hint">仅做场景分类与风险评分，无主备切换</span>
+              <h3>模型行为</h3>
+              <span class="hint">仅作用于本页配置的聊天模型</span>
+            </header>
+            <div data-field>
+              <label for="keywords">关闭思考模式的模型关键词</label>
+              <textarea id="keywords" rows="4" placeholder="每行一个，如 qwen"></textarea>
+              <span data-hint>命中即对该模型显式关闭思考模式；留空则使用内置默认列表</span>
+            </div>
+          </section>
+        </section>
+
+        <!-- 风险审核 -->
+        <section id="panel-decision" hidden>
+          <p class="page-intro">
+            调用<b>决策模型</b>只做场景分类与风险评分：不提取关键词、不生成描述，输出分类与 0~100 风险分（图片 <code>POST /api/v1/image/decision</code>、文本 <code>POST /api/v1/text/decision</code>）。
+            <a href="#test" data-test-api="decision">去接口调试 →</a>
+          </p>
+
+          <section class="card">
+            <header class="card-head">
+              <h3>风险审核</h3>
+              <span class="hint">图片与文本各自使用独立的分类白名单</span>
               <span class="spacer"></span>
               <label class="switch-row"><input type="checkbox" role="switch" id="dec-enabled"> 启用</label>
             </header>
-            <div id="dec-fields">
-              <div class="field-grid">
-                <div data-field>
-                  <label for="dec-base-url">接口地址 base_url</label>
-                  <input id="dec-base-url">
-                </div>
-                <div data-field>
-                  <label for="dec-model">模型标识</label>
-                  <input id="dec-model">
-                </div>
-                <div data-field>
-                  <label for="dec-resolution-trigger">图片分辨率</label>
-                  <ot-dropdown class="select">
-                    <button type="button" id="dec-resolution-trigger" popovertarget="menu-decres" aria-haspopup="listbox">
-                      <span data-label>high</span>
-                      <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="m6 9 6 6 6-6" />
-                      </svg>
-                    </button>
-                    <div id="menu-decres" popover role="listbox">
-                      <button role="menuitem" data-value="low">low</button>
-                      <button role="menuitem" data-value="medium">medium</button>
-                      <button role="menuitem" data-value="high">high</button>
-                      <button role="menuitem" data-value="ultra_high">ultra_high</button>
-                    </div>
-                  <input type="hidden" id="dec-resolution" value="high">
-                  </ot-dropdown>
-                </div>
-                <div data-field>
-                  <label for="dec-timeout">调用超时（秒）</label>
-                  <input id="dec-timeout" type="number" min="1" step="1">
-                </div>
+
+            <div class="field-grid">
+              <div data-field>
+                <label for="dec-timeout">调用超时（秒）</label>
+                <input id="dec-timeout" type="number" min="1" step="1">
               </div>
               <div data-field>
-                <label for="dec-api-key">API Key</label>
-                <input id="dec-api-key" class="mono" autocomplete="off" spellcheck="false">
+                <label for="dec-max-text">文本字符上限</label>
+                <input id="dec-max-text" type="number" min="1" step="1">
+                <span data-hint>超过上限的文本请求会被直接拒绝</span>
               </div>
             </div>
-            <p class="hint">关闭后 POST /api/v1/image/decision 直接返回未配置，不影响图片分析接口。</p>
+
+            <div id="dec-channels" class="channel-list"></div>
+
+            <div class="test-actions">
+              <button type="button" data-variant="secondary" id="dec-add-channel">添加渠道</button>
+              <span class="hint">未指定 model 时按配置顺序轮询；失败时换下一个渠道再试一次</span>
+            </div>
           </section>
         </section>
 
@@ -362,13 +330,13 @@
                 <ot-dropdown class="select">
                   <input type="hidden" id="test-api" value="analyze">
                   <button type="button" id="test-api-trigger" popovertarget="menu-test-api" aria-haspopup="listbox">
-                    <span data-label>图像审核</span>
+                    <span data-label>图像分析</span>
                     <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="m6 9 6 6 6-6" />
                     </svg>
                   </button>
                   <div id="menu-test-api" popover role="listbox">
-                    <button role="menuitem" data-value="analyze">图像审核</button>
+                    <button role="menuitem" data-value="analyze">图像分析</button>
                     <button role="menuitem" data-value="decision">风险审核</button>
                   </div>
                 </ot-dropdown>
@@ -381,6 +349,20 @@
                   <label><input type="radio" name="test-src" value="file"> 上传文件</label>
                 </div>
               </div>
+
+              <div data-field id="test-decision-mode-field" hidden>
+                <label>审核类型</label>
+                <div class="radio-row">
+                  <label><input type="radio" name="test-dec-mode" value="image" checked> 图片</label>
+                  <label><input type="radio" name="test-dec-mode" value="text"> 文本</label>
+                </div>
+              </div>
+            </div>
+
+            <div data-field id="test-text-field" hidden>
+              <label for="test-text">待审核文本</label>
+              <textarea id="test-text" rows="4" placeholder="输入需要审核的文本"></textarea>
+              <span data-hint>超过「风险审核」里配置的字符上限会直接报错</span>
             </div>
 
             <div data-field id="test-url-field">
@@ -398,7 +380,7 @@
             <div id="test-model-field">
               <div class="field-grid">
                 <div data-field>
-                  <label for="test-model-trigger">模型（可选）</label>
+                  <label for="test-model-trigger" id="test-model-label">模型（可选）</label>
                   <ot-dropdown class="select">
                     <input type="hidden" id="test-model" value="">
                     <button type="button" id="test-model-trigger" popovertarget="menu-test-model" aria-haspopup="listbox">
@@ -411,10 +393,10 @@
                       <button role="menuitem" data-value="">自动（不指定）</button>
                     </div>
                   </ot-dropdown>
-                  <span data-hint>格式为 channel/模型，取自「图像审核」里配置的渠道</span>
+                  <span data-hint id="test-model-hint">格式为 channel/模型，取自「图像分析」里配置的渠道</span>
                 </div>
 
-                <div data-field>
+                <div data-field id="test-load-balance-field">
                   <label class="switch-row"><input type="checkbox" role="switch" id="test-lb"> 负载均衡 load_balance</label>
                   <span data-hint>仅在未指定模型时生效</span>
                 </div>
@@ -493,9 +475,11 @@
                   <input id="confirm-password" type="password" autocomplete="new-password" required>
                 </div>
               </div>
-              <button type="submit">修改密码</button>
+              <div class="action-row">
+                <button type="submit">修改密码</button>
+                <span class="hint">修改密码后，其它已登录的会话将全部失效。</span>
+              </div>
             </form>
-            <p class="hint">修改密码后，其它已登录的会话将全部失效。</p>
           </section>
         </section>
 
@@ -510,12 +494,36 @@
     </main>
   </div>
 
+  <!-- 重启服务：二次确认 -->
+  <dialog id="restart-dialog">
+    <header>
+      <h3>重启服务？</h3>
+    </header>
+    <p class="hint">
+      进程会退出，依赖 Docker / k8s 的 restart 策略自动拉起新实例。重启期间服务短暂不可用，完成后需要重新登录。
+      裸进程部署点击后服务会直接停止，请确认当前部署具备自动拉起能力。
+    </p>
+    <footer>
+      <button type="button" data-variant="secondary" id="restart-cancel">取消</button>
+      <button type="button" data-variant="danger" id="restart-confirm">确认重启</button>
+    </footer>
+  </dialog>
+
+  <!-- 重启进行中 -->
+  <div class="restart-overlay" id="restart-overlay" hidden>
+    <div class="card restart-box">
+      <div class="restart-spinner" aria-hidden="true"></div>
+      <p class="restart-title" id="restart-text">正在重启服务…</p>
+      <p class="hint" id="restart-sub">等待新进程启动，请勿关闭页面</p>
+    </div>
+  </div>
+
   <script src="/admin/assets/app.js"></script>
   <script>
     // 页面分区：hash 名 → 顶栏标题
     const SECTIONS = {
       base: '基础配置',
-      channel: '图像审核',
+      channel: '图像分析',
       decision: '风险审核',
       key: 'API 密钥',
       test: '接口调试',
@@ -568,11 +576,15 @@
       });
     }
 
-    // 下拉选择器：展开时宽度对齐触发器，选中后写回隐藏 input
-    document.querySelectorAll('ot-dropdown.select').forEach((sel) => {
+    // initSelect 绑定一个 ot-dropdown 选择器：展开时宽度对齐触发器，选中后写回隐藏 input
+    function initSelect(sel) {
+      if (sel.dataset.bound === '1') return;
+      sel.dataset.bound = '1';
+
       const trigger = sel.querySelector('button');
       const menu = sel.querySelector('[popover]');
       const input = sel.querySelector('input[type=hidden]');
+      if (!trigger || !menu || !input) return;
 
       menu.addEventListener('toggle', (e) => {
         if (e.newState === 'open') menu.style.width = trigger.offsetWidth + 'px';
@@ -585,7 +597,57 @@
         menu.hidePopover();
         input.dispatchEvent(new Event('change', { bubbles: true }));
       });
-    });
+    }
+
+    // 初始化页面上已有的选择器
+    document.querySelectorAll('ot-dropdown.select').forEach(initSelect);
+
+    // 选择器自增序号：动态创建时需要唯一的 popover id
+    let selectSeq = 0;
+
+    // createSelect 动态创建一个与现有控件风格一致的下拉选择器
+    function createSelect(options, value, fieldName) {
+      const uid = 'dyn-select-' + (++selectSeq);
+
+      const wrap = document.createElement('ot-dropdown');
+      wrap.className = 'select';
+
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.value = value || (options[0] ? options[0].value : '');
+      if (fieldName) input.dataset.field = fieldName;
+
+      const trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.setAttribute('popovertarget', uid);
+      trigger.setAttribute('aria-haspopup', 'listbox');
+
+      const label = document.createElement('span');
+      label.dataset.label = '';
+      const selected = options.find((o) => o.value === input.value) || options[0];
+      label.textContent = selected ? selected.label : '';
+      trigger.appendChild(label);
+      trigger.insertAdjacentHTML('beforeend',
+        '<svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>');
+
+      const menu = document.createElement('div');
+      menu.id = uid;
+      menu.setAttribute('popover', '');
+      menu.setAttribute('role', 'listbox');
+      options.forEach((o) => {
+        const item = document.createElement('button');
+        item.setAttribute('role', 'menuitem');
+        item.dataset.value = o.value;
+        item.textContent = o.label;
+        menu.appendChild(item);
+      });
+
+      wrap.appendChild(input);
+      wrap.appendChild(trigger);
+      wrap.appendChild(menu);
+      initSelect(wrap);
+      return wrap;
+    }
 
     // currentSection 取当前分区（hash 驱动，非法值回落到 base）
     function currentSection() {
@@ -686,11 +748,6 @@
       setFieldsDisabled($('b-fields'), !$('b-enabled').checked);
     }
 
-    // toggleDecisionFields 场景决策未启用时禁用其输入框
-    function toggleDecisionFields() {
-      setFieldsDisabled($('dec-fields'), !$('dec-enabled').checked);
-    }
-
     // toggleAuthBadge 鉴权关闭时给出提示徽标
     function toggleAuthBadge() {
       $('auth-off').hidden = $('auth-enabled').checked;
@@ -708,10 +765,6 @@
       $('image-timeout').value = ai.image_timeout || 30;
       $('max-retries').value = ai.max_retries ?? 2;
       $('max-image-bytes').value = ai.max_image_bytes || 10485760;
-      $('temperature').value = ai.temperature ?? 0.2;
-      $('top-p').value = ai.top_p ?? 0.9;
-      $('mock').checked = !!ai.mock;
-      $('allow-private').checked = !!ai.allow_private_urls;
       $('keywords').value = joinLines(ai.disabled_thinking_keywords);
 
       const def = findChannel(c, 'default') || {};
@@ -730,12 +783,9 @@
 
       const dec = ai.decision || {};
       $('dec-enabled').checked = !!dec.enabled;
-      $('dec-base-url').value = dec.base_url || '';
-      $('dec-api-key').value = dec.api_key || '';
-      $('dec-model').value = dec.model || '';
-      $('dec-resolution').value = dec.resolution || 'high';
       $('dec-timeout').value = dec.timeout || 30;
-      toggleDecisionFields();
+      $('dec-max-text').value = dec.max_text_chars || 4000;
+      renderDecisionChannels(dec.channels || []);
 
       $('auth-enabled').checked = !!(c.auth && c.auth.enabled);
       toggleAuthBadge();
@@ -760,11 +810,6 @@
               image_timeout: num('image-timeout'),
               max_retries: num('max-retries'),
               max_image_bytes: num('max-image-bytes'),
-              temperature: num('temperature'),
-              top_p: num('top-p'),
-              mock: $('mock').checked,
-              allow_private_urls: $('allow-private').checked,
-              disabled_thinking_keywords: splitList($('keywords').value),
             },
           };
 
@@ -785,18 +830,19 @@
               models: splitList($('b-models').value),
             });
           }
-          return { channels };
+          return {
+            channels,
+            disabled_thinking_keywords: splitList($('keywords').value),
+          };
         }
 
         case 'decision':
           return {
             decision: {
               enabled: $('dec-enabled').checked,
-              base_url: val('dec-base-url'),
-              api_key: val('dec-api-key'),
-              model: val('dec-model'),
-              resolution: pick('dec-resolution'),
               timeout: num('dec-timeout'),
+              max_text_chars: num('dec-max-text'),
+              channels: collectDecisionChannels(),
             },
           };
 
@@ -806,6 +852,125 @@
         default:
           return {};
       }
+    }
+
+    // ---------- 风险审核：多渠道编辑 ----------
+
+    // 决策渠道协议类型选项
+    const DECISION_TYPE_OPTIONS = [
+      { value: 'gemini-decision', label: 'gemini-decision（Gemini Decision 1）' },
+      { value: 'openai-decision', label: 'openai-decision（OpenAI 兼容）' },
+    ];
+
+    // 各协议的默认接口地址（新增渠道 / 切换类型时自动填充）
+    const DECISION_DEFAULT_BASE_URLS = {
+      'gemini-decision': 'https://generativelanguage.googleapis.com',
+      'openai-decision': 'https://api.openai.com/v1',
+    };
+
+    // 图片分辨率选项（openai 渠道会映射成 detail）
+    const RESOLUTION_OPTIONS = [
+      { value: 'low', label: 'low' },
+      { value: 'medium', label: 'medium' },
+      { value: 'high', label: 'high' },
+      { value: 'ultra_high', label: 'ultra_high' },
+    ];
+
+    // buildDecisionChannelCard 构建单个决策渠道编辑卡片
+    function buildDecisionChannelCard(ch) {
+      const card = document.createElement('section');
+      card.className = 'channel-card';
+      card.dataset.channel = '1';
+
+      card.innerHTML = `
+        <header class="card-head">
+          <h4 class="channel-title">渠道</h4>
+          <span class="badge outline" data-role="type-badge"></span>
+          <span class="spacer"></span>
+          <label class="switch-row"><input type="checkbox" role="switch" data-field="enabled"> 启用</label>
+          <button type="button" class="outline" data-variant="danger" data-remove>删除</button>
+        </header>
+        <div class="field-grid">
+          <div data-field>
+            <label>渠道 id</label>
+            <input data-field="id" aria-label="渠道 id" placeholder="gemini-main" spellcheck="false">
+            <span data-hint>调用时 model 填这个值；小写字母/数字/下划线/中划线</span>
+          </div>
+          <div data-field>
+            <label>协议类型</label>
+            <span data-type-slot></span>
+          </div>
+          <div data-field>
+            <label>接口地址 base_url</label>
+            <input data-field="base_url" aria-label="接口地址" placeholder="https://..." spellcheck="false">
+          </div>
+          <div data-field>
+            <label>模型标识</label>
+            <input data-field="model" aria-label="模型标识" placeholder="gemini-decision-1" spellcheck="false">
+          </div>
+        </div>
+        <div data-field>
+          <label>API Key</label>
+          <input data-field="api_key" aria-label="API Key" class="mono" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field-grid">
+          <div data-field>
+            <label>图片分辨率</label>
+            <span data-resolution-slot></span>
+            <span data-hint>openai-decision 会映射为 detail（medium→auto、ultra_high→original）</span>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('[data-type-slot]').appendChild(
+        createSelect(DECISION_TYPE_OPTIONS, ch.type || 'gemini-decision', 'type'));
+      card.querySelector('[data-resolution-slot]').appendChild(
+        createSelect(RESOLUTION_OPTIONS, ch.resolution || 'high', 'resolution'));
+
+      card.querySelector('[data-field=id]').value = ch.id || '';
+      card.querySelector('[data-field=enabled]').checked = ch.enabled !== false;
+      const baseURLInput = card.querySelector('[data-field=base_url]');
+      baseURLInput.value = ch.base_url || DECISION_DEFAULT_BASE_URLS[ch.type || 'gemini-decision'] || '';
+      card.querySelector('[data-field=model]').value = ch.model || '';
+      card.querySelector('[data-field=api_key]').value = ch.api_key || '';
+
+      const badge = card.querySelector('[data-role=type-badge]');
+      const typeInput = card.querySelector('[data-field=type]');
+      const syncBadge = () => {
+        badge.textContent = typeInput.value;
+      };
+      typeInput.addEventListener('change', () => {
+        syncBadge();
+        // 只在地址为空或仍是某个协议的默认地址时跟随类型切换，避免覆盖手填的网关地址
+        const current = baseURLInput.value.trim();
+        const defaults = Object.values(DECISION_DEFAULT_BASE_URLS);
+        if (!current || defaults.includes(current)) {
+          baseURLInput.value = DECISION_DEFAULT_BASE_URLS[typeInput.value] || '';
+        }
+      });
+      syncBadge();
+
+      return card;
+    }
+
+    // renderDecisionChannels 用配置渲染渠道列表
+    function renderDecisionChannels(channels) {
+      const box = $('dec-channels');
+      box.textContent = '';
+      (channels || []).forEach((ch) => box.appendChild(buildDecisionChannelCard(ch)));
+    }
+
+    // collectDecisionChannels 从编辑卡片收集渠道配置
+    function collectDecisionChannels() {
+      return Array.from($('dec-channels').querySelectorAll('[data-channel]')).map((card) => ({
+        id: card.querySelector('[data-field=id]').value.trim(),
+        type: card.querySelector('[data-field=type]').value,
+        enabled: card.querySelector('[data-field=enabled]').checked,
+        base_url: card.querySelector('[data-field=base_url]').value.trim(),
+        api_key: card.querySelector('[data-field=api_key]').value.trim(),
+        model: card.querySelector('[data-field=model]').value.trim(),
+        resolution: card.querySelector('[data-field=resolution]').value,
+      }));
     }
 
     // renderKeys 渲染密钥表格（textContent 避免 XSS）
@@ -902,10 +1067,32 @@
 
     // 开关联动
     $('b-enabled').addEventListener('change', toggleBackupFields);
-    $('dec-enabled').addEventListener('change', toggleDecisionFields);
     $('auth-enabled').addEventListener('change', toggleAuthBadge);
 
     $('save-btn').addEventListener('click', save);
+
+
+    // 风险审核：添加 / 删除渠道
+    $('dec-add-channel').addEventListener('click', () => {
+      const count = $('dec-channels').querySelectorAll('[data-channel]').length;
+      $('dec-channels').appendChild(buildDecisionChannelCard({
+        id: 'channel-' + (count + 1),
+        type: 'gemini-decision',
+        enabled: true,
+        base_url: '',
+        api_key: '',
+        model: '',
+        resolution: 'high',
+      }));
+      markDirty('decision');
+    });
+
+    $('dec-channels').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-remove]');
+      if (!btn) return;
+      btn.closest('[data-channel]').remove();
+      markDirty('decision');
+    });
 
     // 随机生成密钥（sk- + 32 位十六进制），只填入输入框，不直接入库
     $('gen-key-btn').addEventListener('click', () => {
@@ -986,16 +1173,33 @@
       return '支持常见图片格式 · 上限 ' + formatBytes(max);
     }
 
-    // refreshTestOptions 用当前配置填充模型 / 密钥下拉
-    function refreshTestOptions() {
+    // refreshTestModels 按当前接口生成模型 / 渠道选项
+    function refreshTestModels() {
       if (!cfg) return;
 
       const modelMenu = $('menu-test-model');
       modelMenu.textContent = '';
       addMenuItem(modelMenu, '', '自动（不指定）');
-      ((cfg.ai && cfg.ai.channels) || []).forEach((ch) => {
-        (ch.models || []).forEach((m) => addMenuItem(modelMenu, ch.id + '/' + m, ch.id + '/' + m));
-      });
+
+      if (testApi() === 'decision') {
+        const channels = (cfg.ai && cfg.ai.decision && cfg.ai.decision.channels) || [];
+        channels.forEach((ch) => {
+          if (!ch.enabled) return;
+          addMenuItem(modelMenu, ch.id, ch.id + '（' + ch.type + '）');
+        });
+      } else {
+        ((cfg.ai && cfg.ai.channels) || []).forEach((ch) => {
+          (ch.models || []).forEach((m) => addMenuItem(modelMenu, ch.id + '/' + m, ch.id + '/' + m));
+        });
+      }
+      syncSelects();
+    }
+
+    // refreshTestOptions 用当前配置填充模型 / 密钥下拉
+    function refreshTestOptions() {
+      if (!cfg) return;
+
+      refreshTestModels();
 
       const keyMenu = $('menu-test-key');
       keyMenu.textContent = '';
@@ -1022,8 +1226,33 @@
       return checked ? checked.value : 'url';
     }
 
+    function testDecisionMode() {
+      const checked = document.querySelector('input[name=test-dec-mode]:checked');
+      return checked ? checked.value : 'image';
+    }
+
+    // testEndpoint 当前请求要打到的接口路径
+    function testEndpoint() {
+      if (testApi() === 'decision' && testDecisionMode() === 'text') {
+        return '/api/v1/text/decision';
+      }
+      return '/api/v1/image/' + testApi();
+    }
+
     // testPayload 组装与页面发送一致的请求体
     function testPayload() {
+      const api = testApi();
+      const model = $('test-model').value;
+
+      // 文本审核：只要 text（+ 可选 model）
+      if (api === 'decision' && testDecisionMode() === 'text') {
+        const text = $('test-text').value.trim();
+        if (!text) return null;
+        const payload = { text };
+        if (model) payload.model = model;
+        return payload;
+      }
+
       const payload = {};
       if (testSource() === 'url') {
         const url = $('test-url').value.trim();
@@ -1034,13 +1263,15 @@
         payload.image_base64 = testFileBase64;
       }
 
-      if (testApi() === 'analyze') {
-        const model = $('test-model').value;
+      if (api === 'analyze') {
         if (model) {
           payload.model = model;
         } else if ($('test-lb').checked) {
           payload.load_balance = true;
         }
+      } else if (model) {
+        // 风险审核的 model 是决策渠道 id
+        payload.model = model;
       }
       return payload;
     }
@@ -1049,11 +1280,19 @@
     function updateTestState() {
       const api = testApi();
       const src = testSource();
+      const textMode = api === 'decision' && testDecisionMode() === 'text';
 
-      $('test-api-hint').textContent = 'POST /api/v1/image/' + api;
-      $('test-url-field').hidden = src !== 'url';
-      $('test-file-field').hidden = src !== 'file';
-      $('test-model-field').hidden = api !== 'analyze';
+      $('test-api-hint').textContent = 'POST ' + testEndpoint();
+      $('test-decision-mode-field').hidden = api !== 'decision';
+      $('test-text-field').hidden = !textMode;
+      $('test-url-field').hidden = textMode || src !== 'url';
+      $('test-file-field').hidden = textMode || src !== 'file';
+      $('test-model-field').hidden = false;
+      $('test-load-balance-field').hidden = api !== 'analyze';
+      $('test-model-label').textContent = api === 'decision' ? '决策渠道（可选）' : '模型（可选）';
+      $('test-model-hint').textContent = api === 'decision'
+        ? '取自「风险审核」里配置的决策渠道 id；不指定则按配置顺序轮询'
+        : '格式为 channel/模型，取自「图像分析」里配置的渠道';
 
       const modelChosen = !!$('test-model').value;
       $('test-lb').disabled = modelChosen;
@@ -1061,7 +1300,7 @@
 
       const payload = testPayload();
       $('test-send').disabled = !payload;
-      $('test-send-hint').textContent = payload ? '' : '请先填写 URL 或选择图片';
+      $('test-send-hint').textContent = payload ? '' : (textMode ? '请先输入待审核文本' : '请先填写 URL 或选择图片');
 
       renderTestCurl();
     }
@@ -1073,25 +1312,26 @@
 
     // renderTestCurl 生成与页面发送等价的 curl 命令
     function renderTestCurl() {
-      const api = testApi();
-      const endpoint = window.location.origin + '/api/v1/image/' + api;
+      const endpoint = window.location.origin + testEndpoint();
       const key = $('test-key').value;
-      const src = testSource();
       const payload = testPayload();
+      const useFile = testApi() !== 'decision' || testDecisionMode() === 'image'
+        ? testSource() === 'file'
+        : false;
 
       if (!payload) {
-        $('test-curl').textContent = '# 填写图片 URL 或选择文件后生成命令';
+        $('test-curl').textContent = '# 填写 URL / 选择文件 / 输入文本后生成命令';
         return;
       }
 
       const lines = [];
-      if (src === 'file') {
+      if (useFile) {
         lines.push('IMG=$(base64 -w0 ./' + (testFileName || 'photo.jpg') + ')');
       }
       lines.push('curl -X POST ' + shellQuote(endpoint) + ' \\');
       lines.push("  -H 'Content-Type: application/json' \\");
       if (key) lines.push('  -H ' + shellQuote('Authorization: Bearer ' + key) + ' \\');
-      if (src === 'file') {
+      if (useFile) {
         lines.push('  -d "{\\"image_base64\\":\\"$IMG\\"}"');
       } else {
         lines.push('  -d ' + shellQuote(JSON.stringify(payload)));
@@ -1113,7 +1353,7 @@
       btn.disabled = true;
       const started = performance.now();
       try {
-        const resp = await fetch('/api/v1/image/' + testApi(), {
+        const resp = await fetch(testEndpoint(), {
           method: 'POST',
           headers,
           body: JSON.stringify(payload),
@@ -1144,11 +1384,18 @@
     }
 
     // 调试页事件绑定
-    $('test-api').addEventListener('change', updateTestState);
+    $('test-api').addEventListener('change', () => {
+      refreshTestModels();
+      updateTestState();
+    });
     $('test-model').addEventListener('change', updateTestState);
     $('test-key').addEventListener('change', renderTestCurl);
     $('test-lb').addEventListener('change', updateTestState);
     $('test-url').addEventListener('input', updateTestState);
+    $('test-text').addEventListener('input', updateTestState);
+    document.querySelectorAll('input[name=test-dec-mode]').forEach((radio) => {
+      radio.addEventListener('change', updateTestState);
+    });
     document.querySelectorAll('input[name=test-src]').forEach((radio) => {
       radio.addEventListener('change', updateTestState);
     });
@@ -1204,6 +1451,82 @@
         applySelect($('test-api').closest('ot-dropdown'), api);
         updateTestState();
       });
+    });
+
+    // ---------- 重启服务 ----------
+
+    // sleep 简单延时（轮询等待用）
+    function sleep(ms) {
+      return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      });
+    }
+
+    // healthSnapshot 读取健康检查，用于判断进程是否已经换新
+    async function healthSnapshot() {
+      try {
+        const resp = await fetch('/healthz', { cache: 'no-store' });
+        if (!resp.ok) return null;
+        const body = await resp.json();
+        return body && body.code === 200 ? body.data : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    // runRestart 触发重启并轮询等待新实例启动
+    async function runRestart() {
+      const text = $('restart-text');
+      const sub = $('restart-sub');
+      $('restart-overlay').hidden = false;
+      text.textContent = '正在重启服务…';
+      sub.textContent = '等待新进程启动，请勿关闭页面';
+
+      const before = await healthSnapshot();
+      const oldStartedAt = before ? before.started_at : 0;
+      const beginAt = Date.now();
+
+      try {
+        await apiCall('/admin/api/restart', { method: 'POST' });
+      } catch (err) {
+        text.textContent = '重启请求失败';
+        sub.textContent = err.message;
+        return;
+      }
+
+      // 最多等待 90 秒，每 1 秒探测一次
+      const deadline = Date.now() + 90 * 1000;
+      while (Date.now() < deadline) {
+        await sleep(1000);
+        const snap = await healthSnapshot();
+        if (!snap || !snap.started_at) continue;
+        // 旧进程还没退出时 started_at 不变，继续等
+        if (oldStartedAt && snap.started_at === oldStartedAt) continue;
+        // 没拿到旧值时，至少等 2 秒再认新实例
+        if (!oldStartedAt && Date.now() - beginAt < 2000) continue;
+
+        text.textContent = '重启完成';
+        sub.textContent = '正在跳转登录页…';
+        window.location.href = '/admin/login?restarted=1';
+        return;
+      }
+
+      text.textContent = '重启超时';
+      sub.textContent = '请检查容器状态后手动刷新本页';
+    }
+
+    $('restart-btn').addEventListener('click', () => {
+      $('user-menu').hidePopover();
+      $('restart-dialog').showModal();
+    });
+
+    $('restart-cancel').addEventListener('click', () => {
+      $('restart-dialog').close();
+    });
+
+    $('restart-confirm').addEventListener('click', () => {
+      $('restart-dialog').close();
+      runRestart();
     });
 
     // 修改密码

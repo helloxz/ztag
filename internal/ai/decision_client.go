@@ -3,35 +3,34 @@ package ai
 // Gemini Decisions API 原生 HTTP 客户端。
 //
 // 为什么不用 goai / 官方 Go SDK：
-//   - goai provider 只封装 generateContent 等聊天接口，没有 decisions 端点；
+//   - goai provider 只封装 generateContent 等聊天接口，没有 decisions 端点（v0.11.0 仍然没有）；
 //   - 官方 google.golang.org/genai 的发布版不保证已支持 Decisions API；
-//   - 端点本身只是一次 POST + 固定 JSON，自研可精确控制重试与安全拦截识别。
+//   - 端点本身只是一次 POST + 固定 JSON，自研可精确控制安全拦截识别与响应解析。
 //
 // 协议要点（v1beta）：
-//   POST {base_url}/v1beta/decisions
-//   Header: x-goog-api-key
-//   Body:   {"model": "...", "input": [...], "questions": {...}}
-//   返回:   {"answers": {...}, "usage": {...}}，输出 token 恒为 0
+//
+//	POST {base_url}/v1beta/decisions
+//	Header: x-goog-api-key
+//	Body:   {"model": "...", "input": [...], "questions": {"name": {...}}}
+//	返回:   {"answers": {"name": {...}}, "usage": {...}}
+//
+// 重试与多渠道路由由 DecisionGateway 负责，本客户端只做单次调用。
 import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/helloxz/ztag/internal/config"
+	"github.com/helloxz/ztag/internal/model"
 )
 
 // decisionMaxResponseBytes 单次响应体读取上限（answers 是结构化的短 JSON，留足余量即可）。
 const decisionMaxResponseBytes = 4 << 20
-
-// decisionRetryBackoffBase 重试退避基数：第 n 次重试等待 n × base。
-const decisionRetryBackoffBase = 300 * time.Millisecond
 
 // 问题类型：默认只用 noul（是否）与 score（有序评分），choice 保留常量备用。
 const (
@@ -39,26 +38,7 @@ const (
 	decisionQuestionScore = "score"
 )
 
-// decisionBlockedCodes 供应商安全策略拦截的错误码白名单。
-// 只有命中这些 code 的 400 才会被判定为「违规输入」，其余 400 一律当参数错误。
-var decisionBlockedCodes = map[string]bool{
-	"safety":             true,
-	"prohibited_content": true,
-	"blocklist":          true,
-	"image_safety":       true,
-	"content_blocked":    true,
-	"jailbreak":          true,
-}
-
-// decisionProhibitedCodes 属于极危拦截（通常为 CSAM）的错误码子集：
-// 对外的 category 会从 blocked 升级为 prohibited，风险分固定 100。
-// 取 fail-closed：blocklist 可能是已知违规哈希，宁可按最严重处理。
-var decisionProhibitedCodes = map[string]bool{
-	"prohibited_content": true,
-	"blocklist":          true,
-}
-
-// decisionContent 输入内容块（文本 / 图片）。
+// decisionContent Gemini 输入内容块（文本 / 图片）。
 type decisionContent struct {
 	Type       string `json:"type"`                 // text | image
 	Text       string `json:"text,omitempty"`       // text 块内容
@@ -67,26 +47,26 @@ type decisionContent struct {
 	Resolution string `json:"resolution,omitempty"` // image 块：low | medium | high | ultra_high
 }
 
-// decisionQuestion 单个问题定义。criteria 依 type 不同：
+// geminiQuestion 单个问题定义。criteria 依 type 不同：
 //   - noul：可为空（或 true_description / false_description 对象）
 //   - choice：option key → 描述 的对象
 //   - score：有序等级描述数组（低 → 高）
-type decisionQuestion struct {
+type geminiQuestion struct {
 	Type         string      `json:"type"`
 	Instructions string      `json:"instructions"`
 	Criteria     interface{} `json:"criteria,omitempty"`
 }
 
-// decisionRequest 请求体。
-type decisionRequest struct {
-	Model     string                      `json:"model"`
-	Input     []decisionContent           `json:"input"`
-	Questions map[string]decisionQuestion `json:"questions"`
+// geminiDecisionRequest 请求体。
+type geminiDecisionRequest struct {
+	Model     string                    `json:"model"`
+	Input     []decisionContent         `json:"input"`
+	Questions map[string]geminiQuestion `json:"questions"`
 }
 
-// decisionAnswer 单个问题的回答。
+// geminiDecisionAnswer 单个问题的回答。
 // 指针类型用于区分「字段缺失」与「值为 0」。
-type decisionAnswer struct {
+type geminiDecisionAnswer struct {
 	Type          string             `json:"type"`
 	Noul          *float64           `json:"noul,omitempty"`
 	Choice        string             `json:"choice,omitempty"`
@@ -95,9 +75,9 @@ type decisionAnswer struct {
 	Confidence    float64            `json:"confidence"`
 }
 
-// decisionResponse 响应体（只取需要的字段）。
-type decisionResponse struct {
-	Answers map[string]decisionAnswer `json:"answers"`
+// geminiDecisionResponse 响应体（只取需要的字段）。
+type geminiDecisionResponse struct {
+	Answers map[string]geminiDecisionAnswer `json:"answers"`
 	Usage   struct {
 		TotalInputTokens int `json:"total_input_tokens"`
 	} `json:"usage"`
@@ -113,65 +93,137 @@ type decisionAPIError struct {
 	} `json:"error"`
 }
 
-// DecisionBlockedError 表示输入被供应商安全策略直接拒绝（HTTP 400 + 安全类错误码）。
-// 调用方据此合成 blocked / 100 的结果，而不是当作调用失败。
+// DecisionBlockedError 表示输入被供应商安全策略直接拒绝（HTTP 400 + 安全类错误码），
+// 或模型明确拒答（refusal）。调用方据此合成 blocked / prohibited 结果，而不是当作调用失败。
 type DecisionBlockedError struct {
-	Code    string // 供应商错误码，如 safety / image_safety
+	Code    string // 供应商错误码，如 safety / image_safety / refusal
 	Message string // 供应商错误描述
 }
 
 // Error 实现 error 接口（错误消息保持英文，便于日志检索）。
 func (e *DecisionBlockedError) Error() string {
-	return "decision input blocked by provider safety filter (code: " + e.Code + ")"
+	return "decision input blocked or declined (code: " + e.Code + ")"
 }
 
-// decisionClient Decisions API 轻量客户端。
+// geminiDecisionClient Gemini 原生 Decisions API 客户端。
 // 并发安全：内部只持有不可变的配置与 *http.Client，可被多个请求复用。
-type decisionClient struct {
+type geminiDecisionClient struct {
+	endpoint   string
+	apiKey     string
+	model      string
+	resolution string
 	httpClient *http.Client
-	endpoint   string        // 完整端点地址
-	apiKey     string        // x-goog-api-key
-	model      string        // 模型标识
-	timeout    time.Duration // 单次调用总超时（含重试）
-	maxRetries int           // 失败重试次数（0 表示不重试）
 }
 
-// newDecisionClient 按配置构建客户端。
+// newGeminiDecisionClient 按渠道配置构建客户端。
 // base_url 允许带或不带 /v1beta：缺失时自动补齐，末尾斜杠会被归一化。
-func newDecisionClient(cfg config.DecisionConfig, maxRetries int) *decisionClient {
-	base := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
-	if base == "" {
-		base = config.DefaultDecisionBaseURL
-	}
+func newGeminiDecisionClient(ch config.DecisionChannelConfig, timeout time.Duration) *geminiDecisionClient {
+	base := strings.TrimRight(strings.TrimSpace(ch.BaseURL), "/")
 	if !strings.HasSuffix(base, "/v1beta") {
 		base += "/v1beta"
 	}
-	if maxRetries < 0 {
-		maxRetries = 0
-	}
-	return &decisionClient{
-		httpClient: &http.Client{},
+	return &geminiDecisionClient{
 		endpoint:   base + "/decisions",
-		apiKey:     cfg.APIKey,
-		model:      cfg.Model,
-		timeout:    time.Duration(cfg.Timeout) * time.Second,
-		maxRetries: maxRetries,
+		apiKey:     ch.APIKey,
+		model:      ch.Model,
+		resolution: ch.Resolution,
+		httpClient: &http.Client{Timeout: timeout},
 	}
 }
 
-// call 执行一次决策请求（含重试）：
-//   - 网络错误 / 429 / 5xx → 按 maxRetries 指数式退避重试；
-//   - 400 命中安全类错误码 → 返回 *DecisionBlockedError（不重试）；
-//   - 其余 4xx（含参数错误、鉴权失败）→ 直接返回错误，不重试。
-func (c *decisionClient) call(ctx context.Context, input []decisionContent, questions map[string]decisionQuestion) (*decisionResponse, error) {
-	// 总超时覆盖「序列化 + 全部重试」，避免重试把请求拖到不可控的时长
-	if c.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, c.timeout)
-		defer cancel()
+// evaluate 执行一次决策调用并归一化回答。
+func (c *geminiDecisionClient) evaluate(ctx context.Context, in *DecisionInput) (*decisionAnswers, error) {
+	input, err := c.buildInput(in)
+	if err != nil {
+		return nil, err
 	}
 
-	body, err := json.Marshal(decisionRequest{
+	resp, err := c.call(ctx, input, buildGeminiQuestions(in.Mode))
+	if err != nil {
+		return nil, err
+	}
+	return answersFromGemini(in.Mode, resp)
+}
+
+// buildInput 把决策输入转成 Gemini 的 content 块。
+func (c *geminiDecisionClient) buildInput(in *DecisionInput) ([]decisionContent, error) {
+	switch in.Mode {
+	case DecisionModeImage:
+		return []decisionContent{
+			{Type: "text", Text: decisionInputHint},
+			{
+				Type:       "image",
+				Data:       stripDataURIPrefix(in.Image.DataURI),
+				MIMEType:   in.Image.MIME,
+				Resolution: c.resolution,
+			},
+		}, nil
+	case DecisionModeText:
+		return []decisionContent{{Type: "text", Text: in.Text}}, nil
+	default:
+		return nil, model.NewBizError("unsupported decision mode: " + in.Mode)
+	}
+}
+
+// buildGeminiQuestions 按输入模式构建问题集合：每分类一个 noul + 一个严重度 score。
+func buildGeminiQuestions(mode string) map[string]geminiQuestion {
+	order := decisionCategoryOrder(mode)
+	instructions := decisionCategoryInstructions(mode)
+
+	questions := make(map[string]geminiQuestion, len(order)+1)
+	for _, category := range order {
+		questions[category] = geminiQuestion{
+			Type:         decisionQuestionNoul,
+			Instructions: instructions[category],
+		}
+	}
+	questions[decisionSeverityKey] = geminiQuestion{
+		Type:         decisionQuestionScore,
+		Instructions: "综合评估内容的风险严重程度。",
+		Criteria:     decisionSeverityCriteria,
+	}
+	return questions
+}
+
+// answersFromGemini 把 Gemini 的 answers 映射为归一化回答。
+func answersFromGemini(mode string, resp *geminiDecisionResponse) (*decisionAnswers, error) {
+	if resp == nil || len(resp.Answers) == 0 {
+		return nil, model.NewBizError("decision response is empty")
+	}
+
+	order := decisionCategoryOrder(mode)
+	if len(order) == 0 {
+		return nil, model.NewBizError("unsupported decision mode: " + mode)
+	}
+
+	answers := &decisionAnswers{
+		Probabilities: make(map[string]float64, len(order)),
+		Confidences:   make(map[string]float64, len(order)),
+	}
+	for _, category := range order {
+		answer, ok := resp.Answers[category]
+		if !ok || answer.Noul == nil {
+			return nil, model.NewBizError("decision response missing category answer: " + category)
+		}
+		answers.Probabilities[category] = *answer.Noul
+		answers.Confidences[category] = answer.Confidence
+	}
+
+	severity, ok := resp.Answers[decisionSeverityKey]
+	if !ok || severity.Score == nil {
+		return nil, model.NewBizError("decision response missing risk severity score")
+	}
+	answers.Severity = *severity.Score
+	return answers, nil
+}
+
+// call 执行单次 HTTP 请求并解析响应。
+func (c *geminiDecisionClient) call(
+	ctx context.Context,
+	input []decisionContent,
+	questions map[string]geminiQuestion,
+) (*geminiDecisionResponse, error) {
+	body, err := json.Marshal(geminiDecisionRequest{
 		Model:     c.model,
 		Input:     input,
 		Questions: questions,
@@ -180,62 +232,30 @@ func (c *decisionClient) call(ctx context.Context, input []decisionContent, ques
 		return nil, fmt.Errorf("marshal decision request: %w", err)
 	}
 
-	var lastErr error
-	for attempt := 0; attempt <= c.maxRetries; attempt++ {
-		if attempt > 0 {
-			if err := sleepWithContext(ctx, time.Duration(attempt)*decisionRetryBackoffBase); err != nil {
-				return nil, err
-			}
-		}
-
-		resp, retryable, err := c.once(ctx, body)
-		if err == nil {
-			return resp, nil
-		}
-		lastErr = err
-
-		// 安全拦截与不可重试错误立即返回
-		var blockedErr *DecisionBlockedError
-		if errors.As(err, &blockedErr) || !retryable {
-			return nil, err
-		}
-		slog.Warn("decision request failed, retrying",
-			"attempt", attempt+1, "max_retries", c.maxRetries, "model", c.model, "err", err)
-	}
-	return nil, lastErr
-}
-
-// once 执行单次 HTTP 请求，返回 (响应, 是否可重试, 错误)。
-func (c *decisionClient) once(ctx context.Context, body []byte) (*decisionResponse, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, false, fmt.Errorf("build decision request: %w", err)
+		return nil, fmt.Errorf("build decision request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-goog-api-key", c.apiKey)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		// 超时或主动取消：不再重试
-		if ctx.Err() != nil {
-			return nil, false, fmt.Errorf("decision request canceled: %w", ctx.Err())
-		}
-		return nil, true, fmt.Errorf("decision request failed: %w", err)
+		return nil, fmt.Errorf("decision request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, decisionMaxResponseBytes))
-	if readErr != nil {
-		return nil, true, fmt.Errorf("read decision response: %w", readErr)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, decisionMaxResponseBytes))
+	if err != nil {
+		return nil, fmt.Errorf("read decision response: %w", err)
 	}
 
-	// 成功响应
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
-		var out decisionResponse
+		var out geminiDecisionResponse
 		if err := json.Unmarshal(raw, &out); err != nil {
-			return nil, false, fmt.Errorf("parse decision response: %w (raw: %s)", err, truncateForLog(string(raw)))
+			return nil, fmt.Errorf("parse decision response: %w (raw: %s)", err, truncateForLog(string(raw)))
 		}
-		return &out, false, nil
+		return &out, nil
 	}
 
 	// 错误响应：尽量解析出供应商错误码与描述
@@ -249,21 +269,18 @@ func (c *decisionClient) once(ctx context.Context, body []byte) (*decisionRespon
 
 	// 安全策略拦截：整个请求被拒，需要转成 blocked 结果
 	if resp.StatusCode == http.StatusBadRequest && decisionBlockedCodes[code] {
-		return nil, false, &DecisionBlockedError{Code: code, Message: message}
+		return nil, &DecisionBlockedError{Code: code, Message: message}
 	}
-
-	retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError
-	return nil, retryable, fmt.Errorf("decision request failed (HTTP %d): %s", resp.StatusCode, message)
+	return nil, fmt.Errorf("decision request failed (HTTP %d): %s", resp.StatusCode, message)
 }
 
-// sleepWithContext 等待指定时长，期间响应 ctx 取消。
-func sleepWithContext(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
+// stripDataURIPrefix 去掉 data URI 前缀，只保留裸 base64。
+func stripDataURIPrefix(dataURI string) string {
+	if !strings.HasPrefix(dataURI, "data:") {
+		return dataURI
 	}
+	if idx := strings.Index(dataURI, ","); idx >= 0 {
+		return dataURI[idx+1:]
+	}
+	return dataURI
 }

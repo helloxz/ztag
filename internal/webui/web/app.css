@@ -30,6 +30,86 @@ body {
   width: 100%;
 }
 
+/* ---------------- 首页落地页 ---------------- */
+
+.home-card {
+  width: min(100%, 34rem);
+  text-align: center;
+}
+
+.home-brand {
+  font-size: var(--text-2);
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.04em;
+}
+
+.home-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-block: var(--space-3) var(--space-2);
+  font-size: var(--text-7);
+  color: var(--success);
+}
+
+.home-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--success);
+}
+
+.home-desc {
+  margin-block-start: var(--space-4);
+  color: var(--muted-foreground);
+  font-size: var(--text-7);
+}
+
+.home-links {
+  margin-block-start: var(--space-5);
+  font-size: var(--text-7);
+}
+
+/* ---------------- 重启服务 ---------------- */
+
+.restart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background-color: light-dark(rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.7));
+}
+
+.restart-box {
+  width: min(100%, 22rem);
+  text-align: center;
+}
+
+.restart-spinner {
+  width: 2rem;
+  height: 2rem;
+  margin: 0 auto var(--space-4);
+  border: 3px solid var(--muted);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: ztag-spin 1s linear infinite;
+}
+
+.restart-title {
+  font-weight: var(--font-medium);
+}
+
+@keyframes ztag-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ---------------- 管理台布局 ---------------- */
 
 [data-sidebar-layout] {
@@ -391,6 +471,30 @@ header[data-topnav] {
   color: var(--danger);
 }
 
+/* 决策渠道编辑卡片（嵌在卡片里的子卡片） */
+.channel-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-block-end: var(--space-4);
+}
+
+.channel-card {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  background-color: var(--faint);
+}
+
+.channel-card .card-head {
+  margin-block-end: var(--space-4);
+}
+
+.channel-card .channel-title {
+  margin: 0;
+  font-size: var(--text-5);
+}
+
 /* 密钥录入行：输入框与按钮同高，窄屏自动换行 */
 .key-input-row {
   display: flex;
@@ -435,6 +539,13 @@ header[data-topnav] {
   gap: var(--space-5);
   flex-wrap: wrap;
   margin-block-start: var(--space-2);
+}
+
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .test-actions {

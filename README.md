@@ -77,21 +77,45 @@ models = [
 - `type` 支持三种协议：`openai-chat`（OpenAI Chat Completions 兼容）、`openai-response`（OpenAI Responses 兼容）、`anthropic`（Anthropic Messages 兼容，含阿里云等兼容网关）。
 - 请求时通过 `model="channel/modelId"`（如 `default/gpt-4o-mini`、`backup/claude-3-5-sonnet`）指定，未传则走 `default` 第一个；`load_balance=true` 时随机选 `default` 一个（与 `model` 互斥，`model` 优先）；`default`失败随机切 `backup`，`backup`失败再随机重试。
 
-### 场景决策模型配置（可选）
+### 风险审核（决策模型）配置
 
-`POST /api/v1/image/decision` 使用 Gemini Decision 1（Decisions API），只做场景分类与风险评分、不生成文本，因此没有 keywords/description，也没有主备切换与 temperature/top_p：
+`POST /api/v1/image/decision`（图片）与 `POST /api/v1/text/decision`（文本）共用决策模型配置。决策模型只输出分类概率与风险评分、不生成文本，因此没有 keywords/description，也没有 temperature/top_p。
+
+支持配置**多个决策渠道**，两种协议可选：
+
+- `gemini-decision`：Gemini Decision 1（原生 Decisions API）
+- `openai-decision`：OpenAI 兼容 Decisions API（如 Vercel AI Gateway 的 `/v1/decisions`）
 
 ```toml
 [ai.decision]
-enabled = false                                        # 未启用时该接口返回 decision model is not configured，不影响其它接口
-base_url = "https://generativelanguage.googleapis.com" # 可带 /v1beta，也支持兼容网关
-api_key = "your-gemini-api-key"                        # 请求头 x-goog-api-key
+enabled = false          # 总开关：false 时两个决策接口都返回 decision model is not configured
+timeout = 30             # 单次调用超时（秒），<=0 回退 30s
+max_text_chars = 4000    # 文本审核字符上限，超长直接报错
+
+[[ai.decision.channels]]
+id = "gemini-main"       # 渠道 id：调用时 model 填这个值；小写字母/数字/下划线/中划线，需唯一
+type = "gemini-decision"
+enabled = true
+base_url = "https://generativelanguage.googleapis.com" # 实际请求 {base_url}/v1beta/decisions
+api_key = "your-gemini-api-key"                        # x-goog-api-key
 model = "gemini-decision-1"
-resolution = "high"                                    # low | medium | high | ultra_high（影响 token 成本与细节识别）
-timeout = 30                                           # 单次调用超时（秒），<=0 回退 30s
+resolution = "high"                                    # low | medium | high | ultra_high
+
+[[ai.decision.channels]]
+id = "openai-main"
+type = "openai-decision"
+enabled = true
+base_url = "https://ai-gateway.vercel.sh/v1"           # 实际请求 {base_url}/decisions
+api_key = "your-ai-gateway-key"                        # Authorization: Bearer
+model = "openai/gpt-6-luna-decisions"
+resolution = "high"                                    # openai 渠道映射为 detail：low→low / medium→auto / high→high / ultra_high→original
 ```
 
-> 旧部署的 `data/config.toml` 不会被自动改写，需手工补上该段后重启；缺失时仅该接口不可用。
+路由规则：
+
+- 请求体可用 `model` 指定渠道 id（如 `"model": "openai-main"`）；不指定则按配置顺序**轮询**；
+- 单个渠道失败时：还有其它渠道就换下一个再试一次，只有一个渠道就用它重试一次，仍失败则返回 `decision analysis failed`；
+- 模型拒答（refusal）与供应商安全拦截统一映射为 `blocked / 99`，极危拦截（`prohibited_content` / `blocklist`）映射为 `prohibited / 100`。
 
 ## Web 管理台（/admin）
 
@@ -99,10 +123,13 @@ timeout = 30                                           # 单次调用超时（�
 
 - **首次访问**：提示初始化管理员账号与密码（密码以 bcrypt 哈希存储），保存后自动登录；
 - **已初始化**：直接显示登录页，登录后进入管理页；
-- **可管理内容**：基础配置（监听地址、运行模式、AI 超时/重试/温度等）、图像审核（主力/备用渠道 default、backup）、风险审核（决策模型）、对外 API 密钥（增删 + 鉴权开关）、管理员密码；
-- **接口调试**：独立页面，可填图片 URL 或直接上传文件（前端转 base64），选择接口/模型/鉴权后一键发送并查看真实返回；下方实时生成等价的 curl 命令，可复制到终端复现；
-- **写回方式**：按分区保存——「基础配置 / 图像审核 / 风险审核 / API 密钥」四个页面各自调用 `PUT /admin/api/config/{section}`，只提交并覆盖本分区的字段，其余分区不受影响；落盘时仍是整体重写 `data/config.toml`（覆盖式，不保留原文件注释），写前用同一套规则校验合并后的完整配置；文件权限收紧为 `0600`；
-- **生效方式**：除管理员账号/密码外，其余配置需**重启服务**生效（页面会提示「有改动待重启生效」）。
+- **可管理内容**：基础配置（监听地址、运行模式、AI 超时/图片下载超时/失败重试/图片大小上限）、图像分析（主力/备用渠道 default、backup + 关闭思考模式的关键词）、风险审核（决策渠道增删/启停，支持 gemini-decision 与 openai-decision 两种协议，含总开关/超时/文本长度上限）、对外 API 密钥（增删 + 鉴权开关）、管理员密码；
+- **仅支持改配置文件的项**：`ai.temperature`、`ai.top_p`、`ai.mock`、`ai.allow_private_urls` —— 管理台不展示，接口也不会覆盖，需要时直接改 `config.toml` 后重启；
+- **接口调试**：独立页面，可填图片 URL 或直接上传文件（前端转 base64），也可切换到文本审核直接粘贴文本；选择接口/渠道/鉴权后一键发送并查看真实返回；下方实时生成等价的 curl 命令，可复制到终端复现；
+- **写回方式**：按分区保存——「基础配置 / 图像分析 / 风险审核 / API 密钥」四个页面各自调用 `PUT /admin/api/config/{section}`，只提交并覆盖本分区的字段，其余分区不受影响；落盘时仍是整体重写 `data/config.toml`（覆盖式，不保留原文件注释），写前用同一套规则校验合并后的完整配置；文件权限收紧为 `0600`；
+- **生效方式**：除管理员账号/密码外，其余配置需**重启服务**生效（页面会提示「有改动待重启生效」）；
+- **重启服务**：右上角账号菜单 →「重启服务」，二次确认后进程优雅退出（退出码 0），由 Docker `restart: unless-stopped` 或 k8s 自动拉起；页面每 1 秒轮询 `/healthz` 的 `started_at`，检测到新实例后跳转登录页并提示。裸进程部署点击后会直接停止，请确认部署具备自动拉起能力；
+- **根路径**：`/` 是一个运行状态页（服务运行中 + 版本 + 项目地址，GitHub 链接带 `rel="nofollow"`），不暴露管理台入口；`/favicon.ico` 返回 204。
 
 页面资源（HTML/CSS/JS，含 [oat](https://oat.ink/) 的 `oat.min.css` / `oat.min.js`，MIT 协议）全部通过 `go:embed` 打进二进制：部署只需一个可执行文件，离线/内网环境同样可用（首次运行会在当前目录自建 `data/` 存放配置与日志）。
 
@@ -129,7 +156,7 @@ ZTAG_WEB_DIR= ./scripts/dev.sh         # 显式关闭，退回内嵌资源
 服务默认监听 `:8080`，启动后：
 
 ```bash
-# 健康检查
+# 健康检查：返回 status / version / started_at（进程启动时间）
 curl http://127.0.0.1:8080/healthz
 
 # 图片分析（骨架阶段返回模拟结果）
@@ -137,21 +164,34 @@ curl -X POST http://127.0.0.1:8080/api/v1/image/analyze \
   -H "Content-Type: application/json" \
   -d '{"image_url": "https://example.com/demo.jpg"}'
 
-# 场景决策：只返回场景分类与 0~100 风险评分
+# 风险审核（图片）：只返回场景分类与 0~100 风险评分
 curl -X POST http://127.0.0.1:8080/api/v1/image/decision \
   -H "Content-Type: application/json" \
   -d '{"image_url": "https://example.com/demo.jpg"}'
+
+# 风险审核（文本）：分类白名单与图片分开
+curl -X POST http://127.0.0.1:8080/api/v1/text/decision \
+  -H "Content-Type: application/json" \
+  -d '{"text": "加微信 xxx 领福利，稳赚不赔"}'
+
+# 两个接口都可用 model 指定决策渠道（渠道 id 见 ai.decision.channels）
+curl -X POST http://127.0.0.1:8080/api/v1/text/decision \
+  -H "Content-Type: application/json" \
+  -d '{"text": "……", "model": "openai-main"}'
 ```
 
-场景决策返回：
+风险审核返回：
 
 ```json
-{ "code": 200, "msg": "", "data": { "category": "porn", "score": 87, "elapsed_ms": 312 } }
+{ "code": 200, "msg": "", "data": { "category": "porn", "score": 87, "model_id": "gemini-main", "elapsed_ms": 312 } }
 ```
 
-- `category`：`normal | porn | suggestive | gore | violence | politics | gambling | drugs | terror | fraud | other_risk | blocked | prohibited`
+- `category`（图片）：`normal | porn | suggestive | gore | violence | politics | gambling | drugs | terror | other_risk`
+- `category`（文本）：`normal | spam | ads | porn | politics | abuse | fraud | illegal | other_risk`
+- 两者都额外可能出现 `blocked`（供应商拦截 / 模型拒答）与 `prohibited`（极危拦截），且**两套分类互不混用**
 - `score`：0~100 风险分（越大越危险）。自然判定与普通拦截上限都是 **99**；**100 只表示极危拦截**（`category = prohibited`，通常是 CSAM），可直接用来触发极危处置流程。详见 `docs/image-decision.md`
-- `elapsed_ms`：本次请求处理总耗时（毫秒，含图片下载/压缩与模型调用；不含中间件）
+- `model_id`：实际处理本次请求的决策渠道 id（轮询或指定后的真实渠道）
+- `elapsed_ms`：本次请求处理总耗时（毫秒，图片接口含下载/压缩；不含中间件）
 
 开启鉴权后需携带 API Key：
 
@@ -242,7 +282,7 @@ docker build --build-arg VERSION=v0.2.3 -t ztag:v0.2.3 .
 
 - [x] 骨架搭建：框架分层、路由/中间件/助手函数分离、hello world 可运行
 - [x] 图片识别接口：URL 校验 / header 探测（≤10MB、MIME、SSRF）/ 下载转 base64 / 主备切换 / goai 真实调用 / 二层分类结构化输出
-- [x] 场景决策接口：Gemini Decision 1（Decisions API）场景分类 + 0~100 风险评分；普通安全拦截映射 blocked/99，极危拦截（prohibited_content/blocklist）映射 prohibited/100 并落 Error 日志
+- [x] 风险审核接口：图片 + 文本两套分类，0~100 风险评分；多渠道决策模型（Gemini Decision 1 / OpenAI 兼容），按渠道轮询、失败换渠道重试；普通拦截与模型拒答映射 blocked/99，极危拦截映射 prohibited/100 并落 Error 日志
 - [x] Web 管理台（/admin）：管理员初始化/登录，在线管理配置、渠道、API 密钥并写回 config.toml
 - [ ] 端到端真实模型验证（配置 API Key 后）
 - [ ] 限流、容量与监控
