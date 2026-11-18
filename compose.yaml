@@ -4,6 +4,8 @@ services:
     image: ghcr.io/helloxz/ztag:latest
     container_name: ztag
     restart: unless-stopped
+    # 限制容器可用内存，避免异常图片或并发任务拖垮宿主机
+    mem_limit: 512m
     ports:
       - "18080:18080"
     volumes:
