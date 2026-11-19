@@ -16,7 +16,7 @@ router → handler → service → ai
 - `internal/middleware`：Recovery / AccessLog / Auth / RateLimit / AdminSession
 - `internal/handler`：表现层——参数解析 + 统一响应（薄层，无业务逻辑）
 - `internal/service`：业务编排——校验 → AI 网关调用
-- `internal/ai`：多渠道网关（channel 内多模型）；接入真实模型用 `goai.GenerateObject[T]`，当前为 mock。**例外**：风险审核（决策模型）不走 goai（SDK 无 `/decisions` 端点），两套协议各自原生 net/http：`decision_client.go`（Gemini Decisions API）、`decision_openai.go`（OpenAI 兼容 Decisions API），路由/轮询/兜底在 `decision.go`
+- `internal/ai`：多渠道网关（channel 内多模型）；接入真实模型用 `goai.GenerateObject[T]`，当前为 mock。**例外**：风险审核（决策模型）不走 goai（SDK 无 `/decisions` 端点），三套协议各自原生 net/http：`decision_client.go`（Gemini Decisions API）、`decision_openai.go`（OpenAI 兼容 Decisions API）、`decision_systemone.go`（System One / Jev 系），路由/轮询/兜底在 `decision.go`
 - `internal/config` / `internal/model` / `internal/helper`：配置、领域模型、通用助手
 - `internal/webui`：管理台前端资源（HTML/CSS/JS），`go:embed` 内嵌进二进制
 
@@ -34,7 +34,7 @@ router → handler → service → ai
 
 ## Notes
 - 主备双渠道：`[[ai.channels]]` 的 `id` 仅允许 `default`（必填）/ `backup`（可选）；`models` 为模型标识字符串数组；`type` ∈ `openai-chat | openai-response | anthropic`
-- 风险审核：配置在 `[ai.decision]`（enabled/timeout/max_text_chars + `[[ai.decision.channels]]` 多渠道，type ∈ `gemini-decision | openai-decision`）；请求 `model` 指定渠道 id，不指定按配置顺序轮询；单渠道失败重试 1 次、多渠道失败换下一个渠道再试 1 次；模型拒答映射 blocked/99；缺段不阻断启动，仅决策接口返回 `decision model is not configured`
+- 风险审核：配置在 `[ai.decision]`（enabled/timeout/max_text_chars + `[[ai.decision.channels]]` 多渠道，type ∈ `gemini-decision | openai-decision | systemone-decision`）；请求 `model` 指定渠道 id，不指定按配置顺序轮询；单渠道失败重试 1 次、多渠道失败换下一个渠道再试 1 次；模型拒答映射 blocked/99；缺段不阻断启动，仅决策接口返回 `decision model is not configured`
 - 风险审核接口：`POST /api/v1/image/decision`（图片）、`POST /api/v1/text/decision`（文本，受 `max_text_chars` 限制）；文本内容不落日志
 - 图片预处理统一走 `internal/service/image_prepare.go` 的 `ImagePreparer`（两个接口共用同一并发信号量）
 - 根路径 `/` 为运行状态页（不暴露 /admin 入口），`/favicon.ico` 返回 204；`/healthz` 返回 `status / version / started_at`（进程启动时间，管理台重启后据此判断新实例已起）

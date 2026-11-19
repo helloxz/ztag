@@ -11,3 +11,4 @@ bin/
 
 # ---------- 本地工具产物 ----------
 .openchamber/
+scripts/test-decision-image.sh

@@ -28,6 +28,15 @@ type AnalyzeRequest struct {
 type DecisionRequest struct {
 	ImageInput
 	Model string `json:"model"` // 可选：决策渠道 id
+
+	// ConvertWebP 可选：是否把图片压缩转为 WebP，缺省（不传）为 true。
+	// 上游模型不支持 WebP 时传 false，图片按原始格式直接送模型。
+	ConvertWebP *bool `json:"convert_webp"`
+}
+
+// ShouldConvertWebP 返回是否需要压缩转为 WebP：缺省 true，保持历史行为。
+func (r *DecisionRequest) ShouldConvertWebP() bool {
+	return r == nil || r.ConvertWebP == nil || *r.ConvertWebP
 }
 
 // TextDecisionRequest 场景决策（文本）请求体。

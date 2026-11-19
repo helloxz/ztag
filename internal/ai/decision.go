@@ -5,7 +5,7 @@ package ai
 // 设计说明：
 //   - 决策模型只输出「概率 / 选项 / 有序评分」，不生成文本，所以没有
 //     keywords / description 这类需要模型写字的字段；
-//   - 支持多个决策渠道（gemini-decision / openai-decision 两种协议）：
+//   - 支持多个决策渠道（gemini-decision / openai-decision / systemone-decision 三种协议）：
 //     请求可用 model 指定渠道 id，不指定则按配置顺序轮询；
 //   - 单次失败后的兜底：还有其它渠道就换下一个再试一次，只有一个渠道就重试一次；
 //   - 图片与文本使用**各自独立**的分类白名单，互不混用；
@@ -194,6 +194,8 @@ func NewDecisionAnalyzer(cfg config.AIConfig) DecisionAnalyzer {
 		switch ch.Type {
 		case config.DecisionChannelTypeOpenAI:
 			api = newOpenAIDecisionClient(ch, timeout)
+		case config.DecisionChannelTypeSystemOne:
+			api = newSystemOneDecisionClient(ch, timeout)
 		default:
 			api = newGeminiDecisionClient(ch, timeout)
 		}

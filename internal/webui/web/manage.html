@@ -360,6 +360,11 @@
                   <label><input type="radio" name="test-dec-mode" value="text"> 文本</label>
                 </div>
               </div>
+
+              <div data-field id="test-webp-field" hidden>
+                <label class="switch-row"><input type="checkbox" role="switch" id="test-webp" checked> 转为 WebP</label>
+                <span data-hint>关闭后按原始格式直接送模型；存在 systemone-decision 渠道时图片会被统一规整为 JPEG ≤1568，此开关不生效</span>
+              </div>
             </div>
 
             <div data-field id="test-text-field" hidden>
@@ -1050,12 +1055,14 @@
     const DECISION_TYPE_OPTIONS = [
       { value: 'gemini-decision', label: 'gemini-decision（Gemini Decision 1）' },
       { value: 'openai-decision', label: 'openai-decision（OpenAI 兼容）' },
+      { value: 'systemone-decision', label: 'systemone-decision（System One / Jev 系）' },
     ];
 
     // 各协议的默认接口地址（新增渠道 / 切换类型时自动填充）
     const DECISION_DEFAULT_BASE_URLS = {
       'gemini-decision': 'https://generativelanguage.googleapis.com',
       'openai-decision': 'https://api.openai.com/v1',
+      'systemone-decision': 'https://openrouter.ai/api/alpha',
     };
 
     // 图片分辨率选项（openai 渠道会映射成 detail）
@@ -1108,7 +1115,7 @@
           <div data-field>
             <label>图片分辨率</label>
             <span data-resolution-slot></span>
-            <span data-hint>openai-decision 会映射为 detail（medium→auto、ultra_high→original）</span>
+            <span data-hint>openai-decision 会映射为 detail（medium→auto、ultra_high→original）；systemone-decision 忽略该字段</span>
           </div>
         </div>
       `;
@@ -1463,9 +1470,15 @@
         } else if ($('test-lb').checked) {
           payload.load_balance = true;
         }
-      } else if (model) {
-        // 风险审核的 model 是决策渠道 id
-        payload.model = model;
+      } else {
+        // 风险审核图片：关闭「转为 WebP」时显式传 false（缺省即转码，无需传 true）
+        if (!$('test-webp').checked) {
+          payload.convert_webp = false;
+        }
+        if (model) {
+          // 风险审核的 model 是决策渠道 id
+          payload.model = model;
+        }
       }
       return payload;
     }
@@ -1478,6 +1491,7 @@
 
       $('test-api-hint').textContent = 'POST ' + testEndpoint();
       $('test-decision-mode-field').hidden = api !== 'decision';
+      $('test-webp-field').hidden = textMode || api !== 'decision';
       $('test-text-field').hidden = !textMode;
       $('test-url-field').hidden = textMode || src !== 'url';
       $('test-file-field').hidden = textMode || src !== 'file';
@@ -1526,7 +1540,10 @@
       lines.push("  -H 'Content-Type: application/json' \\");
       if (key) lines.push('  -H ' + shellQuote('Authorization: Bearer ' + key) + ' \\');
       if (useFile) {
-        lines.push('  -d "{\\"image_base64\\":\\"$IMG\\"}"');
+        // 文件模式：用 $IMG 占位，其余字段（model / convert_webp 等）一并保留；
+        // 整个 JSON 放在双引号里，shell 才会展开 $IMG
+        const json = JSON.stringify({ ...payload, image_base64: '$IMG' });
+        lines.push('  -d ' + '"' + json.replace(/"/g, '\\"') + '"');
       } else {
         lines.push('  -d ' + shellQuote(JSON.stringify(payload)));
       }
@@ -1585,6 +1602,7 @@
     $('test-model').addEventListener('change', updateTestState);
     $('test-key').addEventListener('change', renderTestCurl);
     $('test-lb').addEventListener('change', updateTestState);
+    $('test-webp').addEventListener('change', updateTestState);
     $('test-url').addEventListener('input', updateTestState);
     $('test-text').addEventListener('input', updateTestState);
     document.querySelectorAll('input[name=test-dec-mode]').forEach((radio) => {

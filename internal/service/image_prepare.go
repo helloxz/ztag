@@ -3,7 +3,7 @@ package service
 // 图片来源预处理（图片分析 / 场景决策共用）。
 //
 // 流程：并发槽位 → 入参校验 → URL 格式校验 → 下载（含头部校验）→
-// 压缩转换 webp → base64 data URI。
+// 按目标格式处理（默认转 webp；决策渠道规整为 JPEG ≤1568）→ base64 data URI。
 //
 // 与旧实现的差异（优化点）：
 //   - 合并了原先的 Probe + Fetch 两次 GET：FetchImage 在读 body 之前已执行
@@ -51,9 +51,27 @@ func effectiveWorkers(n int) int {
 	return n
 }
 
+// ImageTarget 图片预处理目标格式。
+type ImageTarget int
+
+const (
+	// ImageTargetWebP 默认：压缩转 WebP（最长边 ≤2048）。
+	ImageTargetWebP ImageTarget = iota
+	// ImageTargetOriginal 原样透传：不解码、不缩放、不转码（convert_webp=false）。
+	ImageTargetOriginal
+	// ImageTargetDecision 决策渠道规整：JPEG、每边 ≤1568，动画 GIF 抽帧拼图。
+	// 用于对图片格式/尺寸有严格限制的上游（System One / Jev 系）。
+	ImageTargetDecision
+)
+
 // Prepare 把图片 URL 或 base64 转换为统一的可送 AI 的 data URI。
 // 返回的 PreparedImage 可直接交给 AI 网关 / 决策客户端使用。
-func (p *ImagePreparer) Prepare(ctx context.Context, in *model.ImageInput) (*model.PreparedImage, error) {
+//
+// target 决定预处理方式：
+//   - ImageTargetWebP：默认压缩转 WebP；
+//   - ImageTargetOriginal：保持原始格式与字节直传；
+//   - ImageTargetDecision：规整为 JPEG、每边 ≤1568（失败直接报错，不回退原图）。
+func (p *ImagePreparer) Prepare(ctx context.Context, in *model.ImageInput, target ImageTarget) (*model.PreparedImage, error) {
 	// 0. 并发信号量：槽位耗尽时排队；排队期间 ctx 取消/超时则退出（不占槽位）
 	select {
 	case p.sem <- struct{}{}:
@@ -91,7 +109,7 @@ func (p *ImagePreparer) Prepare(ctx context.Context, in *model.ImageInput) (*mod
 				"url", in.ImageURL, "image_timeout", imageTimeout.String(), "err", err)
 			return nil, model.NewBizError(err.Error())
 		}
-		return p.compressAndEncode(raw, srcMIME, "url", in.ImageURL), nil
+		return p.compressAndEncode(raw, srcMIME, "url", in.ImageURL, target)
 
 	default:
 		// 3.1 base64 直传：剥掉 data URI 前缀后解码
@@ -108,19 +126,48 @@ func (p *ImagePreparer) Prepare(ctx context.Context, in *model.ImageInput) (*mod
 		// 3.2 探测真实 MIME（避免 jpeg 内容被标 png 导致解码失败），
 		//     识别失败按 image/png 兜底透传（保持旧行为）
 		srcMIME := detectImageMIME(raw)
-		return p.compressAndEncode(raw, srcMIME, "base64", ""), nil
+		return p.compressAndEncode(raw, srcMIME, "base64", "", target)
 	}
 }
 
-// compressAndEncode 压缩转换并编码为 data URI：
-//   - 可识别格式走 CompressImageForAI（jpg/png/bmp → webp q80，webp 按需缩放）；
-//   - 压缩失败或 MIME 未知时回退原图，不阻断主流程；
+// compressAndEncode 按目标格式处理并编码为 data URI：
+//   - ImageTargetDecision：规整为 JPEG ≤1568（含动画 GIF 抽帧拼图），失败直接报错；
+//   - ImageTargetOriginal：保持原始格式与字节直传（仅 base64 包装）；
+//   - ImageTargetWebP：可识别格式走 CompressImageForAI（jpg/png/bmp → webp q80，
+//     webp 按需缩放）；压缩失败或 MIME 未知时回退原图，不阻断主流程；
 //   - source / ref 仅用于日志定位（url 或 base64）。
-func (p *ImagePreparer) compressAndEncode(raw []byte, srcMIME, source, ref string) *model.PreparedImage {
+func (p *ImagePreparer) compressAndEncode(raw []byte, srcMIME, source, ref string, target ImageTarget) (*model.PreparedImage, error) {
+	// 决策渠道：规整失败必须直接报错——回退原图只会换一种方式被上游拒绝
+	// （webp 不支持、尺寸超限等），错误信息也更难定位。
+	if target == ImageTargetDecision {
+		out, outMIME, err := helper.FitDecisionImage(raw, srcMIME)
+		if err != nil {
+			slog.Warn("decision image normalization failed",
+				"source", source, "url", ref, "src_mime", srcMIME, "err", err)
+			return nil, model.NewBizError(err.Error())
+		}
+		slog.Info("image prepared for decision model",
+			"source", source, "url", ref, "src_mime", srcMIME, "mime", outMIME,
+			"original_bytes", len(raw), "prepared_bytes", len(out))
+		return &model.PreparedImage{
+			DataURI: helper.EncodeDataURI(out, outMIME),
+			MIME:    outMIME,
+		}, nil
+	}
+
 	prepared := raw
 	outMIME := srcMIME
 
 	switch {
+	case target == ImageTargetOriginal:
+		// 调用方显式关闭转码：原始字节与格式原样送模型。
+		// 未知 MIME 仍按 image/png 兜底（与历史行为一致）。
+		if outMIME == "" {
+			outMIME = "image/png"
+		}
+		slog.Info("image webp conversion disabled, keep original format",
+			"source", source, "url", ref, "src_mime", srcMIME, "mime", outMIME,
+			"bytes", len(prepared))
 	case srcMIME == "":
 		// 未知格式：按 image/png 兜底透传（保持旧行为，不做无谓解码尝试）
 		outMIME = "image/png"
@@ -142,7 +189,7 @@ func (p *ImagePreparer) compressAndEncode(raw []byte, srcMIME, source, ref strin
 	return &model.PreparedImage{
 		DataURI: helper.EncodeDataURI(prepared, outMIME),
 		MIME:    outMIME,
-	}
+	}, nil
 }
 
 // detectImageMIME 根据图片文件头探测真实 MIME（标准库 image 可识别的格式），

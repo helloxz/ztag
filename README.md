@@ -70,6 +70,7 @@ http://<服务器地址>:18080/admin
 
 - `gemini-decision`：Gemini Decision API
 - `openai-decision`：OpenAI 兼容 Decisions API
+- `systemone-decision`：System One（Jev 系，如 OpenRouter 的 decisions 端点）
 
 不配置时，图片分析接口仍可正常使用，风险审核接口会返回 `decision model is not configured`。
 

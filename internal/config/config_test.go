@@ -2,33 +2,49 @@ package config
 
 import "testing"
 
+// testDecisionConfig 构造一份可通过校验的最小配置（仅替换决策渠道 key / type）。
+func testDecisionConfig(apiKey, channelType string) *Config {
+	return &Config{
+		Server: ServerConfig{Addr: ":8080", Mode: "debug"},
+		AI: AIConfig{
+			Channels: []ChannelConfig{{
+				ID: "default", Type: ChannelTypeOpenAIChat,
+				BaseURL: "https://example.com", APIKey: "key", Models: []string{"model"},
+			}},
+			Decision: DecisionConfig{
+				Enabled: true, Timeout: 30, MaxTextChars: 4000,
+				Channels: []DecisionChannelConfig{{
+					ID: "gemini-main", Type: channelType, Enabled: true,
+					BaseURL: "https://example.com", APIKey: apiKey,
+					Model: "model", Resolution: DecisionResolutionHigh,
+				}},
+			},
+		},
+	}
+}
+
 // TestValidateDecisionAPIKeys 校验决策渠道的 api_key：全空段拒绝，多 Key 允许。
 func TestValidateDecisionAPIKeys(t *testing.T) {
-	newConfig := func(apiKey string) *Config {
-		return &Config{
-			Server: ServerConfig{Addr: ":8080", Mode: "debug"},
-			AI: AIConfig{
-				Channels: []ChannelConfig{{
-					ID: "default", Type: ChannelTypeOpenAIChat,
-					BaseURL: "https://example.com", APIKey: "key", Models: []string{"model"},
-				}},
-				Decision: DecisionConfig{
-					Enabled: true, Timeout: 30, MaxTextChars: 4000,
-					Channels: []DecisionChannelConfig{{
-						ID: "gemini-main", Type: DecisionChannelTypeGemini, Enabled: true,
-						BaseURL: "https://example.com", APIKey: apiKey,
-						Model: "model", Resolution: DecisionResolutionHigh,
-					}},
-				},
-			},
-		}
-	}
-
-	if err := newConfig("key1|key2").Validate(); err != nil {
+	if err := testDecisionConfig("key1|key2", DecisionChannelTypeGemini).Validate(); err != nil {
 		t.Errorf("multiple keys rejected: %v", err)
 	}
-	if err := newConfig(" | ").Validate(); err == nil {
+	if err := testDecisionConfig(" | ", DecisionChannelTypeGemini).Validate(); err == nil {
 		t.Error("api_key with only separators passed validation, want error")
+	}
+}
+
+// TestValidateDecisionChannelTypes 三种协议类型都应通过校验。
+func TestValidateDecisionChannelTypes(t *testing.T) {
+	for _, channelType := range []string{
+		DecisionChannelTypeGemini,
+		DecisionChannelTypeOpenAI,
+		DecisionChannelTypeSystemOne,
+	} {
+		t.Run(channelType, func(t *testing.T) {
+			if err := testDecisionConfig("key", channelType).Validate(); err != nil {
+				t.Errorf("channel type %q rejected: %v", channelType, err)
+			}
+		})
 	}
 }
 

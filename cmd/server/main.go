@@ -87,7 +87,7 @@ func main() {
 	gateway := ai.NewGateway(cfg.AI)
 	preparer := service.NewImagePreparer(cfg.AI, cfg.Server.Workers)
 	imageSvc := service.NewImageService(gateway, preparer)
-	decisionSvc := service.NewDecisionService(preparer, ai.NewDecisionAnalyzer(cfg.AI), cfg.AI.Decision.MaxTextChars)
+	decisionSvc := service.NewDecisionService(preparer, ai.NewDecisionAnalyzer(cfg.AI), cfg.AI.Decision.MaxTextChars, service.NeedsDecisionImageFit(cfg.AI.Decision.Channels))
 
 	// 请求体上限：base64 编码膨胀约 4/3，另留 JSON 外壳与 data URI 前缀余量
 	const maxRequestBodyExtra = 64 * 1024

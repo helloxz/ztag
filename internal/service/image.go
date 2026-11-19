@@ -28,7 +28,7 @@ func NewImageService(gateway *ai.Gateway, preparer *ImagePreparer) *ImageService
 //
 //	共享图片预处理（并发槽位 → URL 校验 → 下载 → 压缩转 webp → base64）→ AI 网关分析
 func (s *ImageService) AnalyzeImage(ctx context.Context, req *model.AnalyzeRequest) (*model.AnalyzeResult, error) {
-	img, err := s.preparer.Prepare(ctx, &req.ImageInput)
+	img, err := s.preparer.Prepare(ctx, &req.ImageInput, ImageTargetWebP)
 	if err != nil {
 		return nil, err
 	}

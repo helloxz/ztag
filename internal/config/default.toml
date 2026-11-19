@@ -75,9 +75,10 @@ models = [
 #   启用总开关前，请先至少启用一个渠道（把对应节的 enabled 改为 true），
 #   否则配置校验会失败（ai.decision.channels must have at least one enabled channel）。
 #
-# type 支持两种协议：
-#   gemini-decision : Gemini Decision 1（Gemini 原生 Decisions API）
-#   openai-decision : OpenAI 兼容 Decisions API（如 Vercel AI Gateway 的 /v1/decisions）
+# type 支持三种协议：
+#   gemini-decision    : Gemini Decision 1（Gemini 原生 Decisions API）
+#   openai-decision    : OpenAI 兼容 Decisions API（如 Vercel AI Gateway 的 /v1/decisions）
+#   systemone-decision : System One（Jev 系：state + questions 映射，如 OpenRouter /api/alpha/decisions）
 #
 # 输出（两个接口一致）：category + score(0~100) + model_id + elapsed_ms
 #   图片分类：normal|porn|suggestive|gore|violence|politics|gambling|drugs|terror|other_risk
@@ -106,6 +107,18 @@ resolution = "high"                                    # 图片分辨率：low |
 # api_key = "replace-with-your-ai-gateway-key"         # 请求头 Authorization: Bearer；多个用 | 分隔，调用时随机选一个
 # model = "openai/gpt-6-luna-decisions"
 # resolution = "high"                                  # 映射为 OpenAI 的 detail：low→low / medium→auto / high→high / ultra_high→original
+
+# System One（Jev 系）渠道示例（默认注释）：OpenRouter 的 decisions 端点用 state + questions 映射
+# [[ai.decision.channels]]
+# id = "openrouter-main"
+# type = "systemone-decision"
+# enabled = true
+# base_url = "https://openrouter.ai/api/alpha"         # 实际请求 {base_url}/decisions
+# api_key = "replace-with-your-openrouter-key"         # 请求头 Authorization: Bearer；多个用 | 分隔
+# model = "microsoft/microsoft-decision-1.1"           # 注意 OpenRouter 的模型 id 带双重前缀
+# resolution = "high"                                  # systemone 协议忽略该字段
+# 注意：该模型只收 PNG/JPEG 且每边 280~1568；启用该类型渠道后，图片决策请求会自动
+#       规整为 JPEG ≤1568（动画 GIF 抽帧拼图），无需再传 convert_webp
 
 # ---------------- Web 管理台（/admin） ----------------
 # 访问 http://<addr>/admin 可在线管理配置、渠道与 API 密钥。

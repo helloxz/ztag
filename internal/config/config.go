@@ -83,7 +83,7 @@ type DecisionConfig struct {
 // DecisionChannelConfig 单个决策渠道。
 type DecisionChannelConfig struct {
 	ID         string `mapstructure:"id" toml:"id" json:"id"`                         // 渠道 id（调用时 model 填这个值）
-	Type       string `mapstructure:"type" toml:"type" json:"type"`                   // 协议类型：gemini-decision | openai-decision
+	Type       string `mapstructure:"type" toml:"type" json:"type"`                   // 协议类型：gemini-decision | openai-decision | systemone-decision
 	Enabled    bool   `mapstructure:"enabled" toml:"enabled" json:"enabled"`          // 单渠道开关
 	BaseURL    string `mapstructure:"base_url" toml:"base_url" json:"base_url"`       // 接口基础地址
 	APIKey     string `mapstructure:"api_key" toml:"api_key" json:"api_key"`          // API Key
@@ -114,8 +114,9 @@ const (
 
 // 决策渠道协议类型。
 const (
-	DecisionChannelTypeGemini = "gemini-decision" // Gemini Decision 1（原生 Decisions API）
-	DecisionChannelTypeOpenAI = "openai-decision" // OpenAI 兼容 Decisions API
+	DecisionChannelTypeGemini    = "gemini-decision"    // Gemini Decision 1（原生 Decisions API）
+	DecisionChannelTypeOpenAI    = "openai-decision"    // OpenAI 兼容 Decisions API
+	DecisionChannelTypeSystemOne = "systemone-decision" // System One（Jev 系：state + questions 映射）
 )
 
 // decisionChannelIDPattern 决策渠道 id 规则：小写字母/数字开头，可含下划线、中划线，最长 32。
@@ -329,10 +330,10 @@ func (c *Config) Validate() error {
 			seen[ch.ID] = true
 
 			switch ch.Type {
-			case DecisionChannelTypeGemini, DecisionChannelTypeOpenAI:
+			case DecisionChannelTypeGemini, DecisionChannelTypeOpenAI, DecisionChannelTypeSystemOne:
 			default:
-				return fmt.Errorf("decision channel %q type must be one of %s / %s, got: %q",
-					ch.ID, DecisionChannelTypeGemini, DecisionChannelTypeOpenAI, ch.Type)
+				return fmt.Errorf("decision channel %q type must be one of %s / %s / %s, got: %q",
+					ch.ID, DecisionChannelTypeGemini, DecisionChannelTypeOpenAI, DecisionChannelTypeSystemOne, ch.Type)
 			}
 			if ch.BaseURL == "" {
 				return fmt.Errorf("decision channel %q base_url must not be empty", ch.ID)
