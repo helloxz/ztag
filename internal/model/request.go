@@ -30,7 +30,7 @@ type DecisionRequest struct {
 	Model string `json:"model"` // 可选：决策渠道 id
 
 	// ConvertWebP 可选：是否把图片压缩转为 WebP，缺省（不传）为 true。
-	// 上游模型不支持 WebP 时传 false，图片按原始格式直接送模型。
+	// 传 false 时为兼容模式：所有决策渠道统一规整为 JPEG ≤1568。
 	ConvertWebP *bool `json:"convert_webp"`
 }
 

@@ -9,58 +9,36 @@ import (
 	"unicode/utf8"
 
 	"github.com/helloxz/ztag/internal/ai"
-	"github.com/helloxz/ztag/internal/config"
 	"github.com/helloxz/ztag/internal/model"
 )
 
-// DecisionService 风险审核业务服务（场景分类 + 风险评分，支持图片与文本）。
+// DecisionService 内容审核业务服务（场景分类 + 风险评分，支持图片与文本）。
 type DecisionService struct {
-	preparer          *ImagePreparer      // 共享的图片预处理器（含并发信号量）
-	analyzer          ai.DecisionAnalyzer // 决策分析器（多渠道路由 / mock / 未配置）
-	maxTextChars      int                 // 文本字符上限
-	fitDecisionImages bool                // 存在 System One 渠道时，图片统一规整为 JPEG ≤1568
+	preparer     *ImagePreparer      // 共享的图片预处理器（含并发信号量）
+	analyzer     ai.DecisionAnalyzer // 决策分析器（多渠道路由 / mock / 未配置）
+	maxTextChars int                 // 文本字符上限
 }
 
-// NewDecisionService 构建风险审核业务服务。
+// NewDecisionService 构建内容审核业务服务。
 // maxTextChars <= 0 时回退 4000。
-//
-// fitDecisionImages 为 true 时（启用的决策渠道中存在 systemone-decision），
-// 图片请求统一按“决策渠道规整”预处理：JPEG、每边 ≤1568、动画 GIF 抽帧拼图，
-// 此时请求的 convert_webp 参数不生效——这样轮询/兜底无论落到哪个渠道都能被接受。
-func NewDecisionService(preparer *ImagePreparer, analyzer ai.DecisionAnalyzer, maxTextChars int, fitDecisionImages bool) *DecisionService {
+func NewDecisionService(preparer *ImagePreparer, analyzer ai.DecisionAnalyzer, maxTextChars int) *DecisionService {
 	if maxTextChars <= 0 {
 		maxTextChars = 4000
 	}
 	return &DecisionService{
-		preparer:          preparer,
-		analyzer:          analyzer,
-		maxTextChars:      maxTextChars,
-		fitDecisionImages: fitDecisionImages,
+		preparer:     preparer,
+		analyzer:     analyzer,
+		maxTextChars: maxTextChars,
 	}
 }
 
-// NeedsDecisionImageFit 判断是否需要启用决策图片规整：
-// 只要启用的决策渠道里存在 System One（systemone-decision），就返回 true。
-//
-// 图片预处理发生在选渠道之前，无法预知轮询/兜底最终落到哪个渠道，
-// 因此统一按最严格的要求规整（JPEG ≤1568），三种协议都能接受。
-func NeedsDecisionImageFit(channels []config.DecisionChannelConfig) bool {
-	for _, ch := range channels {
-		if ch.Enabled && ch.Type == config.DecisionChannelTypeSystemOne {
-			return true
-		}
-	}
-	return false
-}
-
-// Evaluate 编排一次图片风险审核：
+// Evaluate 编排一次图片内容审核：
 //
 //	共享图片预处理（并发槽位 → URL 校验 → 下载 → 按目标格式处理 → base64）→ 决策模型
 //
-// 请求可传 convert_webp=false 关闭转码，图片按原始格式直接送模型
-// （用于不支持 WebP 的上游，如 microsoft/decision-1.1）；当启用的决策渠道里
-// 存在 System One 渠道时，图片统一规整为 JPEG ≤1568（含动画 GIF 抽帧拼图），
-// 该参数不再生效。
+// 图片预处理按请求的 convert_webp 选择：
+//   - 默认（true）：压缩转 webp，System One 渠道会在客户端自行转成 JPEG ≤1568；
+//   - false：所有渠道统一规整为 JPEG ≤1568（动画 GIF 抽帧拼图）。
 //
 // 被供应商安全策略拦截时返回 blocked（99）或 prohibited（100），
 // 并记录 Warn / Error 日志（含图片 URL 与拦截码）。
@@ -68,9 +46,6 @@ func NeedsDecisionImageFit(channels []config.DecisionChannelConfig) bool {
 func (s *DecisionService) Evaluate(ctx context.Context, req *model.DecisionRequest) (*model.DecisionResult, error) {
 	target := ImageTargetWebP
 	if !req.ShouldConvertWebP() {
-		target = ImageTargetOriginal
-	}
-	if s.fitDecisionImages {
 		target = ImageTargetDecision
 	}
 
@@ -101,7 +76,7 @@ func (s *DecisionService) Evaluate(ctx context.Context, req *model.DecisionReque
 	return result, nil
 }
 
-// EvaluateText 编排一次文本风险审核。
+// EvaluateText 编排一次文本内容审核。
 //
 // 文本不经过图片预处理，直接交给决策模型；日志里只记录长度，不落原文。
 func (s *DecisionService) EvaluateText(ctx context.Context, req *model.TextDecisionRequest) (*model.DecisionResult, error) {

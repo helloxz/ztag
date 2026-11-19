@@ -19,7 +19,7 @@
         <ul>
           <li><a href="#base" data-section="base" aria-current="page">基础配置</a></li>
           <li><a href="#channel" data-section="channel">图像分析</a></li>
-          <li><a href="#decision" data-section="decision">风险审核</a></li>
+          <li><a href="#decision" data-section="decision">内容审核</a></li>
           <li><a href="#key" data-section="key">API 密钥</a></li>
           <li><a href="#test" data-section="test">接口调试</a></li>
           <li><a href="#docs" data-section="docs">API 文档</a></li>
@@ -244,7 +244,7 @@
           </section>
         </section>
 
-        <!-- 风险审核 -->
+        <!-- 内容审核 -->
         <section id="panel-decision" hidden>
           <p class="page-intro">
             调用<b>决策模型</b>只做场景分类与风险评分：不提取关键词、不生成描述，输出分类与 0~100 风险分（图片 <code>POST /api/v1/image/decision</code>、文本 <code>POST /api/v1/text/decision</code>）。
@@ -253,7 +253,7 @@
 
           <section class="card">
             <header class="card-head">
-              <h3>风险审核</h3>
+              <h3>内容审核</h3>
               <span class="hint">图片与文本各自使用独立的分类白名单</span>
               <span class="spacer"></span>
               <label class="switch-row"><input type="checkbox" role="switch" id="dec-enabled"> 启用</label>
@@ -340,7 +340,7 @@
                   </button>
                   <div id="menu-test-api" popover role="listbox">
                     <button role="menuitem" data-value="analyze">图像分析</button>
-                    <button role="menuitem" data-value="decision">风险审核</button>
+                    <button role="menuitem" data-value="decision">内容审核</button>
                   </div>
                 </ot-dropdown>
               </div>
@@ -363,14 +363,14 @@
 
               <div data-field id="test-webp-field" hidden>
                 <label class="switch-row"><input type="checkbox" role="switch" id="test-webp" checked> 转为 WebP</label>
-                <span data-hint>关闭后按原始格式直接送模型；存在 systemone-decision 渠道时图片会被统一规整为 JPEG ≤1568，此开关不生效</span>
+                <span data-hint>关闭后所有渠道统一规整为 JPEG ≤1568（不再转 webp）；开启时 systemone-decision 会在发送前自行转为 JPEG ≤1568，其它渠道仍用 webp</span>
               </div>
             </div>
 
             <div data-field id="test-text-field" hidden>
               <label for="test-text">待审核文本</label>
               <textarea id="test-text" rows="4" placeholder="输入需要审核的文本"></textarea>
-              <span data-hint>超过「风险审核」里配置的字符上限会直接报错</span>
+              <span data-hint>超过「内容审核」里配置的字符上限会直接报错</span>
             </div>
 
             <div data-field id="test-url-field" hidden>
@@ -626,7 +626,7 @@
     const SECTIONS = {
       base: '基础配置',
       channel: '图像分析',
-      decision: '风险审核',
+      decision: '内容审核',
       key: 'API 密钥',
       test: '接口调试',
       docs: 'API 文档',
@@ -1049,7 +1049,7 @@
       }
     }
 
-    // ---------- 风险审核：多渠道编辑 ----------
+    // ---------- 内容审核：多渠道编辑 ----------
 
     // 决策渠道协议类型选项
     const DECISION_TYPE_OPTIONS = [
@@ -1273,7 +1273,7 @@
     $('docs-retry').addEventListener('click', () => loadDocs(true));
 
 
-    // 风险审核：添加 / 删除渠道
+    // 内容审核：添加 / 删除渠道
     $('dec-add-channel').addEventListener('click', () => {
       const count = $('dec-channels').querySelectorAll('[data-channel]').length;
       $('dec-channels').appendChild(buildDecisionChannelCard({
@@ -1471,12 +1471,12 @@
           payload.load_balance = true;
         }
       } else {
-        // 风险审核图片：关闭「转为 WebP」时显式传 false（缺省即转码，无需传 true）
+        // 内容审核图片：关闭「转为 WebP」时显式传 false（缺省即转码，无需传 true）
         if (!$('test-webp').checked) {
           payload.convert_webp = false;
         }
         if (model) {
-          // 风险审核的 model 是决策渠道 id
+          // 内容审核的 model 是决策渠道 id
           payload.model = model;
         }
       }
@@ -1499,7 +1499,7 @@
       $('test-load-balance-field').hidden = api !== 'analyze';
       $('test-model-label').textContent = api === 'decision' ? '决策渠道（可选）' : '模型（可选）';
       $('test-model-hint').textContent = api === 'decision'
-        ? '取自「风险审核」里配置的决策渠道 id；不指定则按配置顺序轮询'
+        ? '取自「内容审核」里配置的决策渠道 id；不指定则按配置顺序轮询'
         : '格式为 channel/模型，取自「图像分析」里配置的渠道';
 
       const modelChosen = !!$('test-model').value;

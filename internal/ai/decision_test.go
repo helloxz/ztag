@@ -51,7 +51,7 @@ func newTestGatewayWithKey(t *testing.T, channelType, apiKey string, handler htt
 				Resolution: config.DecisionResolutionHigh,
 			}},
 		},
-	})
+	}, 1)
 	gw, ok := analyzer.(*DecisionGateway)
 	if !ok {
 		t.Fatalf("analyzer type = %T, want *DecisionGateway", analyzer)
@@ -384,7 +384,7 @@ func newMultiChannelGateway(t *testing.T, handlers ...http.HandlerFunc) *Decisio
 	}
 	analyzer := NewDecisionAnalyzer(config.AIConfig{Decision: config.DecisionConfig{
 		Enabled: true, Timeout: 5, MaxTextChars: 100, Channels: channels,
-	}})
+	}}, 1)
 	gw, ok := analyzer.(*DecisionGateway)
 	if !ok {
 		t.Fatalf("analyzer type = %T, want *DecisionGateway", analyzer)
@@ -508,7 +508,7 @@ func TestDecisionCategories(t *testing.T) {
 
 // TestNewDecisionAnalyzerDisabled enabled=false 时返回未配置错误。
 func TestNewDecisionAnalyzerDisabled(t *testing.T) {
-	analyzer := NewDecisionAnalyzer(config.AIConfig{Decision: config.DecisionConfig{Enabled: false}})
+	analyzer := NewDecisionAnalyzer(config.AIConfig{Decision: config.DecisionConfig{Enabled: false}}, 1)
 	_, err := analyzer.Evaluate(context.Background(), imageInput())
 	if err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("err = %v, want not configured", err)
@@ -523,7 +523,7 @@ func TestNewDecisionAnalyzerNoEnabledChannels(t *testing.T) {
 			ID: "off", Type: config.DecisionChannelTypeGemini, Enabled: false,
 			BaseURL: "https://example.com", APIKey: "k", Model: "m", Resolution: config.DecisionResolutionHigh,
 		}},
-	}})
+	}}, 1)
 	_, err := analyzer.Evaluate(context.Background(), imageInput())
 	if err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("err = %v, want not configured", err)

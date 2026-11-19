@@ -51,6 +51,9 @@ func FitDecisionImage(data []byte, srcMIME string) (out []byte, outMIME string, 
 		}
 		return convertStaticImage(data)
 	default:
+		if srcMIME == "" {
+			return nil, "", fmt.Errorf("unsupported or unrecognized image format for this decision channel")
+		}
 		return nil, "", fmt.Errorf("unsupported image format for this decision channel: %s", srcMIME)
 	}
 }

@@ -1,4 +1,4 @@
-# ZTAG 风险审核接口使用文档
+# ZTAG 内容审核接口使用文档
 
 > 对应接口：
 > - `POST /api/v1/image/decision`（图片）
@@ -30,7 +30,7 @@
 | `image_url` | string | 二选一 | 图片 HTTP(S) 地址，由服务端下载 |
 | `image_base64` | string | 二选一 | 图片 base64 内容（可带 `data:` 前缀） |
 | `model` | string | 否 | 决策渠道 id（见 `[[ai.decision.channels]]`）；不传则按配置顺序轮询 |
-| `convert_webp` | bool | 否 | 是否把图片压缩转为 WebP，缺省 `true`；上游模型不支持 WebP 时传 `false`，图片按原始格式直接送模型（不再缩放）。存在 `systemone-decision` 渠道时该参数不生效，图片统一规整为 JPEG ≤1568 |
+| `convert_webp` | bool | 否 | 是否把图片压缩转为 WebP，缺省 `true`。传 `false` 时所有渠道统一规整为 JPEG ≤1568（动画 GIF 抽帧拼图）；默认 `true` 仍转 WebP，仅 `systemone-decision` 渠道会在客户端自行转成 JPEG ≤1568 |
 
 ### 2.2 文本接口
 
@@ -47,7 +47,7 @@
 { "text": "加微信 xxx 领福利，稳赚不赔", "model": "openai-main" }
 ```
 
-> `convert_webp=false` 只影响图片接口：图片不做解码/缩放/转码，保持原始格式与字节直传；若原图本身就是 WebP，则仍为 WebP。仅图片分析接口不支持该参数。
+> `convert_webp=false` 只影响图片接口：所有渠道统一规整为 JPEG ≤1568（不再转 WebP，动画 GIF 抽帧拼图）；默认 `true` 时仍转 WebP，仅 `systemone-decision` 渠道会在客户端再转成 JPEG ≤1568。图片分析接口不支持该参数。
 
 ---
 
@@ -166,7 +166,7 @@ Authorization: Bearer <api_key>
 4. jpg/png/bmp → webp（quality 80），最长边超过 2048px 等比缩小；gif/avif/动画 webp 原样透传；压缩失败回退原图；
 5. 按渠道协议送入决策 API：Gemini 用 `image` 块 + `resolution`，OpenAI 兼容协议用 `input_image` + base64 data URL（`resolution` 映射为 `detail`），System One 用 `state` 里的 `image_url` 块（`resolution` 忽略）。
 
-> 当启用的决策渠道中存在 `systemone-decision` 时，图片决策请求会跳过上面的 webp 流程，改为决策渠道规整：JPEG、每边 ≤1568（已合规的 JPEG/PNG 原样透传；BMP/静态 WebP/静态 GIF 解码后转 JPEG；**动画 GIF 均匀抽 4 帧拼成一张网格图**；动画 WebP、AVIF 直接报错）。该场景下请求参数 `convert_webp` 不生效。
+> `convert_webp=false` 时为兼容模式：图片决策请求统一规整为 JPEG、每边 ≤1568（已合规的 JPEG/PNG 原样透传；BMP/静态 WebP/静态 GIF 转 JPEG；**动画 GIF 抽 4 帧拼成网格图**；动画 WebP、AVIF 直接报错），所有渠道一致。默认 `true` 仍压缩转 WebP；`systemone-decision` 渠道会在发送前把收到的图片再规整为 JPEG ≤1568（可能产生二次编码），其它渠道不受影响。
 
 > 文本接口不做图片预处理，直接送模型，且文本内容不落日志。
 
@@ -266,7 +266,7 @@ resolution = "high"      # low | medium | high | ultra_high
 # resolution = "high"                            # systemone 协议忽略该字段
 ```
 
-> `systemone-decision` 的请求体是 `state` + `questions` 映射（`noul` / `score`），图片放在 `state` 的 `image_url` 块里，与 OpenAI 兼容协议不同。图片格式与尺寸由上游模型决定：例如 `microsoft/microsoft-decision-1.1` 只收 PNG/JPEG、每边 280~1568。启用该类型渠道后，图片决策请求会自动规整为 JPEG ≤1568（动画 GIF 抽帧拼图），`convert_webp` 在该场景不生效。
+> `systemone-decision` 的请求体是 `state` + `questions` 映射（`noul` / `score`），图片放在 `state` 的 `image_url` 块里，与 OpenAI 兼容协议不同。图片格式与尺寸由上游模型决定：例如 `microsoft/microsoft-decision-1.1` 只收 PNG/JPEG、每边 280~1568。默认 webp 模式下该渠道会在发送前自行转换；传 `convert_webp: false` 则所有渠道统一按 JPEG ≤1568 处理。
 
 路由与兜底：
 

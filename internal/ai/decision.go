@@ -1,6 +1,6 @@
 package ai
 
-// 风险审核（决策模型）能力。
+// 内容审核（决策模型）能力。
 //
 // 设计说明：
 //   - 决策模型只输出「概率 / 选项 / 有序评分」，不生成文本，所以没有
@@ -172,7 +172,10 @@ type DecisionGateway struct {
 //   - ai.mock = true → 固定模拟结果（本地联调）；
 //   - ai.decision.enabled = false 或没有启用的渠道 → 未配置实现，接口直接报错；
 //   - 其余 → 多渠道路由 + 对应协议客户端。
-func NewDecisionAnalyzer(cfg config.AIConfig) DecisionAnalyzer {
+//
+// workers 用于限制 System One 渠道的图片转换并发（预处理信号量之外的二次编码），
+// 非法值按 1 处理。
+func NewDecisionAnalyzer(cfg config.AIConfig, workers int) DecisionAnalyzer {
 	if cfg.Mock {
 		return &mockDecisionAnalyzer{}
 	}
@@ -184,6 +187,11 @@ func NewDecisionAnalyzer(cfg config.AIConfig) DecisionAnalyzer {
 	if timeout <= 0 {
 		timeout = time.Duration(config.DefaultDecisionTimeout) * time.Second
 	}
+	if workers < 1 {
+		workers = 1
+	}
+	// 所有 System One 渠道共用同一个转换信号量，避免各自开一份放大内存峰值
+	imageSem := make(chan struct{}, workers)
 
 	g := &DecisionGateway{}
 	for _, ch := range cfg.Decision.Channels {
@@ -195,7 +203,7 @@ func NewDecisionAnalyzer(cfg config.AIConfig) DecisionAnalyzer {
 		case config.DecisionChannelTypeOpenAI:
 			api = newOpenAIDecisionClient(ch, timeout)
 		case config.DecisionChannelTypeSystemOne:
-			api = newSystemOneDecisionClient(ch, timeout)
+			api = newSystemOneDecisionClient(ch, timeout, imageSem)
 		default:
 			api = newGeminiDecisionClient(ch, timeout)
 		}

@@ -33,7 +33,7 @@ func (s *stubDecisionAnalyzer) Evaluate(ctx context.Context, in *ai.DecisionInpu
 // TestEvaluateTextValidation 空文本与超长文本直接拒绝，且不调用模型。
 func TestEvaluateTextValidation(t *testing.T) {
 	stub := &stubDecisionAnalyzer{result: &model.DecisionResult{Category: "normal"}}
-	svc := NewDecisionService(nil, stub, 10, false)
+	svc := NewDecisionService(nil, stub, 10)
 
 	cases := []struct {
 		name string
@@ -59,7 +59,7 @@ func TestEvaluateTextValidation(t *testing.T) {
 // TestEvaluateTextPassesTrimmedText 文本去空白后透传，并带上渠道 id。
 func TestEvaluateTextPassesTrimmedText(t *testing.T) {
 	stub := &stubDecisionAnalyzer{result: &model.DecisionResult{Category: "spam"}}
-	svc := NewDecisionService(nil, stub, 10, false)
+	svc := NewDecisionService(nil, stub, 10)
 
 	result, err := svc.EvaluateText(context.Background(), &model.TextDecisionRequest{
 		Text:  "  加微信领福利  ",
@@ -87,34 +87,9 @@ func TestEvaluateTextPassesTrimmedText(t *testing.T) {
 
 // TestNewDecisionServiceDefaultMaxTextChars 上限非法时回退 4000。
 func TestNewDecisionServiceDefaultMaxTextChars(t *testing.T) {
-	svc := NewDecisionService(nil, &stubDecisionAnalyzer{}, 0, false)
+	svc := NewDecisionService(nil, &stubDecisionAnalyzer{}, 0)
 	if svc.maxTextChars != 4000 {
 		t.Errorf("maxTextChars = %d, want 4000", svc.maxTextChars)
-	}
-}
-
-// TestNeedsDecisionImageFit 只有启用的 systemone-decision 渠道才触发图片规整。
-func TestNeedsDecisionImageFit(t *testing.T) {
-	tests := []struct {
-		name     string
-		channels []config.DecisionChannelConfig
-		want     bool
-	}{
-		{"none", nil, false},
-		{"gemini only", []config.DecisionChannelConfig{{Type: config.DecisionChannelTypeGemini, Enabled: true}}, false},
-		{"systemone disabled", []config.DecisionChannelConfig{{Type: config.DecisionChannelTypeSystemOne, Enabled: false}}, false},
-		{"systemone enabled", []config.DecisionChannelConfig{
-			{Type: config.DecisionChannelTypeGemini, Enabled: true},
-			{Type: config.DecisionChannelTypeSystemOne, Enabled: true},
-		}, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NeedsDecisionImageFit(tt.channels); got != tt.want {
-				t.Errorf("NeedsDecisionImageFit() = %v, want %v", got, tt.want)
-			}
-		})
 	}
 }
 
@@ -132,20 +107,21 @@ func makeOversizePNG(t *testing.T) string {
 	return base64.StdEncoding.EncodeToString(buf.Bytes())
 }
 
-// TestEvaluateImageDecisionFit 存在 systemone 渠道时忽略 convert_webp，
-// 超大 PNG 会被规整为 JPEG；没有 systemone 渠道时仍按原样透传。
-func TestEvaluateImageDecisionFit(t *testing.T) {
+// TestEvaluateImageTargetPolicy 校验图片预处理目标：
+//   - convert_webp=false → 所有渠道统一按决策规整（JPEG ≤1568）；
+//   - 默认（true）→ 仍压缩转 WebP（System One 渠道由客户端自行兼容）。
+func TestEvaluateImageTargetPolicy(t *testing.T) {
 	imageB64 := makeOversizePNG(t)
 	no := false
 
-	newService := func(fit bool) (*DecisionService, *stubDecisionAnalyzer) {
+	newService := func() (*DecisionService, *stubDecisionAnalyzer) {
 		preparer := NewImagePreparer(config.AIConfig{ImageTimeout: 5, MaxImageBytes: 10 << 20}, 1)
 		stub := &stubDecisionAnalyzer{result: &model.DecisionResult{Category: "normal"}}
-		return NewDecisionService(preparer, stub, 10, fit), stub
+		return NewDecisionService(preparer, stub, 10), stub
 	}
 
-	t.Run("fit enabled", func(t *testing.T) {
-		svc, stub := newService(true)
+	t.Run("convert_webp=false fits for all channels", func(t *testing.T) {
+		svc, stub := newService()
 		if _, err := svc.Evaluate(context.Background(), &model.DecisionRequest{
 			ImageInput:  model.ImageInput{ImageBase64: imageB64},
 			ConvertWebP: &no,
@@ -156,26 +132,25 @@ func TestEvaluateImageDecisionFit(t *testing.T) {
 			t.Fatal("analyzer did not receive image input")
 		}
 		if stub.got.Image.MIME != "image/jpeg" {
-			t.Errorf("MIME = %q, want image/jpeg (convert_webp should be overridden)", stub.got.Image.MIME)
+			t.Errorf("MIME = %q, want image/jpeg", stub.got.Image.MIME)
 		}
 		if !strings.HasPrefix(stub.got.Image.DataURI, "data:image/jpeg;base64,") {
 			t.Errorf("data URI prefix = %q, want image/jpeg", stub.got.Image.DataURI[:min(40, len(stub.got.Image.DataURI))])
 		}
 	})
 
-	t.Run("fit disabled keeps original", func(t *testing.T) {
-		svc, stub := newService(false)
+	t.Run("default keeps webp", func(t *testing.T) {
+		svc, stub := newService()
 		if _, err := svc.Evaluate(context.Background(), &model.DecisionRequest{
-			ImageInput:  model.ImageInput{ImageBase64: imageB64},
-			ConvertWebP: &no,
+			ImageInput: model.ImageInput{ImageBase64: imageB64},
 		}); err != nil {
 			t.Fatalf("Evaluate returned error: %v", err)
 		}
 		if stub.got == nil || stub.got.Image == nil {
 			t.Fatal("analyzer did not receive image input")
 		}
-		if stub.got.Image.MIME != "image/png" {
-			t.Errorf("MIME = %q, want image/png", stub.got.Image.MIME)
+		if stub.got.Image.MIME != "image/webp" {
+			t.Errorf("MIME = %q, want image/webp", stub.got.Image.MIME)
 		}
 	})
 }

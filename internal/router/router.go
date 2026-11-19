@@ -62,9 +62,9 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 	{
 		// 图片分析：识别内容、提取关键词/描述并分类
 		v1.POST("/image/analyze", hs.Image.Analyze)
-		// 风险审核（图片）：仅识别场景并给出 0~100 风险评分（决策模型）
+		// 内容审核（图片）：仅识别场景并给出 0~100 风险评分（决策模型）
 		v1.POST("/image/decision", hs.Decision.Evaluate)
-		// 风险审核（文本）：同一套决策模型，分类白名单与图片分开
+		// 内容审核（文本）：同一套决策模型，分类白名单与图片分开
 		v1.POST("/text/decision", hs.Decision.EvaluateText)
 	}
 

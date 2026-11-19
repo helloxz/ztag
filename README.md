@@ -1,9 +1,9 @@
 # ZTAG
 
-基于大模型的图片内容识别与风险审核服务。通过统一 HTTP API 调用：
+基于大模型的图片识别与内容审核服务。通过统一 HTTP API 调用：
 
 - **图片分析**：提取关键词、描述，并输出内容分类与风险等级
-- **风险审核**：图片 / 文本场景分类，返回 0~100 风险评分
+- **内容审核**：图片 / 文本场景分类，返回 0~100 风险评分
 - **多渠道模型**：支持 OpenAI、Anthropic 兼容接口，支持主备渠道切换
 - **Web 管理台**：在线配置渠道、API 密钥，并内置接口调试与 API 文档
 
@@ -64,15 +64,15 @@ http://<服务器地址>:18080/admin
 
 > 备注：`backup` 渠道默认不启用（配置模板中整段注释），用于主渠道失败时自动切换，请确保配置的模型支持多模态（图像输入），否则无法识别！
 
-### 2. 配置风险审核（可选）
+### 2. 配置内容审核（可选）
 
-进入「风险审核」开启总开关，添加决策渠道：
+进入「内容审核」开启总开关，添加决策渠道：
 
 - `gemini-decision`：Gemini Decision API
 - `openai-decision`：OpenAI 兼容 Decisions API
 - `systemone-decision`：System One（Jev 系，如 OpenRouter 的 decisions 端点）
 
-不配置时，图片分析接口仍可正常使用，风险审核接口会返回 `decision model is not configured`。
+不配置时，图片分析接口仍可正常使用，内容审核接口会返回 `decision model is not configured`。
 
 ### 3. 配置 API 密钥（可选）
 
@@ -102,8 +102,8 @@ X-API-Key: <api_key>
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/v1/image/analyze` | 图片分析：关键词、描述、分类 |
-| POST | `/api/v1/image/decision` | 图片风险审核 |
-| POST | `/api/v1/text/decision` | 文本风险审核 |
+| POST | `/api/v1/image/decision` | 图片内容审核 |
+| POST | `/api/v1/text/decision` | 文本内容审核 |
 
 完整的请求字段、响应结构、分类枚举与错误信息见：
 

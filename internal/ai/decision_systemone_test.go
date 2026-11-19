@@ -1,14 +1,36 @@
 package ai
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/deepteams/webp"
+
 	"github.com/helloxz/ztag/internal/config"
+	"github.com/helloxz/ztag/internal/model"
 )
+
+// pngTestDataURI 1x1 PNG，用于 System One 的图片测试（合规图片会被原样透传）。
+const pngTestDataURI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
+// pngImageInput 构造合规 PNG 输入，避免客户端做二次转换。
+func pngImageInput() *DecisionInput {
+	return &DecisionInput{
+		Mode: DecisionModeImage,
+		Image: &model.PreparedImage{
+			DataURI: pngTestDataURI,
+			MIME:    "image/png",
+		},
+	}
+}
 
 // systemOneAnswers 构造 System One 回答：指定分类给高概率，其余给最低概率。
 // noul/score 与 openai 协议不同，answers 是对象映射而非数组。
@@ -97,7 +119,7 @@ func TestSystemOneImageRequestShape(t *testing.T) {
 		fmt.Fprint(w, systemOneAnswers(t, DecisionModeImage, "porn", 0.87, 3))
 	})
 
-	result, err := gw.Evaluate(context.Background(), imageInput())
+	result, err := gw.Evaluate(context.Background(), pngImageInput())
 	if err != nil {
 		t.Fatalf("Evaluate returned error: %v", err)
 	}
@@ -127,7 +149,7 @@ func TestSystemOneImageRequestShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("image_url = %#v, want object", part["image_url"])
 	}
-	if imageURL["url"] != testImage().DataURI {
+	if imageURL["url"] != pngTestDataURI {
 		t.Errorf("image_url.url = %v, want data URI", imageURL["url"])
 	}
 }
@@ -166,7 +188,7 @@ func TestSystemOneRefusalAnswers(t *testing.T) {
 		fmt.Fprint(w, `{"answers":{"porn":{"type":"refusal"}}}`)
 	})
 
-	result, err := gw.Evaluate(context.Background(), imageInput())
+	result, err := gw.Evaluate(context.Background(), pngImageInput())
 	if err != nil {
 		t.Fatalf("Evaluate returned error: %v", err)
 	}
@@ -185,7 +207,7 @@ func TestSystemOneBlockedHTTP(t *testing.T) {
 		fmt.Fprint(w, `{"error":{"code":"safety","message":"blocked by provider"}}`)
 	})
 
-	result, err := gw.Evaluate(context.Background(), imageInput())
+	result, err := gw.Evaluate(context.Background(), pngImageInput())
 	if err != nil {
 		t.Fatalf("Evaluate returned error: %v", err)
 	}
@@ -202,5 +224,86 @@ func TestSystemOneMissingCategory(t *testing.T) {
 
 	if _, err := gw.Evaluate(context.Background(), textInput("hello")); err == nil {
 		t.Fatal("expected error for missing category answers")
+	}
+}
+
+// TestSystemOneConvertsWebP 默认预处理产出 WebP 时，客户端会先转成 JPEG 再发送。
+func TestSystemOneConvertsWebP(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, 800, 600))
+	for y := 0; y < 600; y++ {
+		for x := 0; x < 800; x++ {
+			img.SetNRGBA(x, y, color.NRGBA{R: uint8(x % 255), G: uint8(y % 255), B: 120, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := webp.Encode(&buf, img, &webp.EncoderOptions{Quality: 80, Method: 4}); err != nil {
+		t.Fatalf("encode webp: %v", err)
+	}
+	webpURI := "data:image/webp;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+
+	var got systemOneRequest
+	gw := newTestGatewayWithKey(t, config.DecisionChannelTypeSystemOne, "test-key", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		fmt.Fprint(w, systemOneAnswers(t, DecisionModeImage, "normal", 0.9, 1))
+	})
+
+	if _, err := gw.Evaluate(context.Background(), &DecisionInput{
+		Mode:  DecisionModeImage,
+		Image: &model.PreparedImage{DataURI: webpURI, MIME: "image/webp"},
+	}); err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+
+	state, ok := got.State.([]interface{})
+	if !ok || len(state) != 2 {
+		t.Fatalf("state = %#v, want [hint, image]", got.State)
+	}
+	part, ok := state[1].(map[string]interface{})
+	if !ok {
+		t.Fatalf("state[1] = %#v, want image part", state[1])
+	}
+	imageURL, ok := part["image_url"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("image_url = %#v, want object", part["image_url"])
+	}
+	url, _ := imageURL["url"].(string)
+
+	const jpegPrefix = "data:image/jpeg;base64,"
+	if !strings.HasPrefix(url, jpegPrefix) {
+		t.Fatalf("image url prefix = %q, want jpeg data URI", url[:min(40, len(url))])
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(url, jpegPrefix))
+	if err != nil {
+		t.Fatalf("decode jpeg base64: %v", err)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("output not decodable: %v", err)
+	}
+	if format != "jpeg" {
+		t.Errorf("format = %q, want jpeg", format)
+	}
+	if cfg.Width != 800 || cfg.Height != 600 {
+		t.Errorf("size = %dx%d, want 800x600", cfg.Width, cfg.Height)
+	}
+}
+
+// TestSystemOneRejectsUnsupportedImage AVIF 等无法规整的图片让该渠道失败，由网关兜底。
+func TestSystemOneRejectsUnsupportedImage(t *testing.T) {
+	gw := newTestGatewayWithKey(t, config.DecisionChannelTypeSystemOne, "test-key", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be called for unsupported image")
+	})
+
+	_, err := gw.Evaluate(context.Background(), &DecisionInput{
+		Mode: DecisionModeImage,
+		Image: &model.PreparedImage{
+			DataURI: "data:image/avif;base64,AAAA",
+			MIME:    "image/avif",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported image format")
 	}
 }

@@ -64,7 +64,7 @@ models = [
 #   "claude-3-5-sonnet",
 # ]
 
-# ---------------- 风险审核（决策模型，支持多渠道） ----------------
+# ---------------- 内容审核（决策模型，支持多渠道） ----------------
 # 接口：
 #   POST /api/v1/image/decision   图片审核（image_url / image_base64）
 #   POST /api/v1/text/decision    文本审核（text）
@@ -117,8 +117,8 @@ resolution = "high"                                    # 图片分辨率：low |
 # api_key = "replace-with-your-openrouter-key"         # 请求头 Authorization: Bearer；多个用 | 分隔
 # model = "microsoft/microsoft-decision-1.1"           # 注意 OpenRouter 的模型 id 带双重前缀
 # resolution = "high"                                  # systemone 协议忽略该字段
-# 注意：该模型只收 PNG/JPEG 且每边 280~1568；启用该类型渠道后，图片决策请求会自动
-#       规整为 JPEG ≤1568（动画 GIF 抽帧拼图），无需再传 convert_webp
+# 注意：该模型只收 PNG/JPEG 且每边 280~1568；默认 webp 模式下该渠道会在发送前自行
+#       转为 JPEG ≤1568，convert_webp=false 时则所有渠道统一规整为 JPEG ≤1568
 
 # ---------------- Web 管理台（/admin） ----------------
 # 访问 http://<addr>/admin 可在线管理配置、渠道与 API 密钥。

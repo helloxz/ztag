@@ -67,7 +67,7 @@ type AIConfig struct {
 	Decision                 DecisionConfig  `mapstructure:"decision" toml:"decision" json:"decision"`                                                       // 场景决策模型（Gemini Decision 1 / Decisions API）
 }
 
-// DecisionConfig 风险审核（决策模型）配置，支持配置多个渠道。
+// DecisionConfig 内容审核（决策模型）配置，支持配置多个渠道。
 //
 // 与 [[ai.channels]] 的聊天渠道不同：决策模型走独立的 Decisions API，
 // 只输出分类概率与风险评分，不生成任何文本。请求里可用渠道 id 指定模型，
@@ -311,7 +311,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("ai.channels must include a channel with id=\"default\"")
 	}
 
-	// 风险审核（决策模型）：仅启用时校验，未启用时允许整段缺失
+	// 内容审核（决策模型）：仅启用时校验，未启用时允许整段缺失
 	if c.AI.Decision.Enabled {
 		if len(c.AI.Decision.Channels) == 0 {
 			return fmt.Errorf("ai.decision.channels must not be empty when ai.decision.enabled = true")

@@ -78,7 +78,7 @@ X-API-Key: <api_key>
 
 ---
 
-## 2. 风险审核（图片）
+## 2. 内容审核（图片）
 
 `POST /api/v1/image/decision`
 
@@ -121,7 +121,7 @@ X-API-Key: <api_key>
 
 ---
 
-## 3. 风险审核（文本）
+## 3. 内容审核（文本）
 
 `POST /api/v1/text/decision`
 

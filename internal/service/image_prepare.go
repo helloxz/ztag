@@ -57,10 +57,8 @@ type ImageTarget int
 const (
 	// ImageTargetWebP 默认：压缩转 WebP（最长边 ≤2048）。
 	ImageTargetWebP ImageTarget = iota
-	// ImageTargetOriginal 原样透传：不解码、不缩放、不转码（convert_webp=false）。
-	ImageTargetOriginal
 	// ImageTargetDecision 决策渠道规整：JPEG、每边 ≤1568，动画 GIF 抽帧拼图。
-	// 用于对图片格式/尺寸有严格限制的上游（System One / Jev 系）。
+	// 用于 convert_webp=false 的兼容模式，或对图片格式/尺寸有严格限制的上游。
 	ImageTargetDecision
 )
 
@@ -69,7 +67,6 @@ const (
 //
 // target 决定预处理方式：
 //   - ImageTargetWebP：默认压缩转 WebP；
-//   - ImageTargetOriginal：保持原始格式与字节直传；
 //   - ImageTargetDecision：规整为 JPEG、每边 ≤1568（失败直接报错，不回退原图）。
 func (p *ImagePreparer) Prepare(ctx context.Context, in *model.ImageInput, target ImageTarget) (*model.PreparedImage, error) {
 	// 0. 并发信号量：槽位耗尽时排队；排队期间 ctx 取消/超时则退出（不占槽位）
@@ -132,7 +129,6 @@ func (p *ImagePreparer) Prepare(ctx context.Context, in *model.ImageInput, targe
 
 // compressAndEncode 按目标格式处理并编码为 data URI：
 //   - ImageTargetDecision：规整为 JPEG ≤1568（含动画 GIF 抽帧拼图），失败直接报错；
-//   - ImageTargetOriginal：保持原始格式与字节直传（仅 base64 包装）；
 //   - ImageTargetWebP：可识别格式走 CompressImageForAI（jpg/png/bmp → webp q80，
 //     webp 按需缩放）；压缩失败或 MIME 未知时回退原图，不阻断主流程；
 //   - source / ref 仅用于日志定位（url 或 base64）。
@@ -159,15 +155,6 @@ func (p *ImagePreparer) compressAndEncode(raw []byte, srcMIME, source, ref strin
 	outMIME := srcMIME
 
 	switch {
-	case target == ImageTargetOriginal:
-		// 调用方显式关闭转码：原始字节与格式原样送模型。
-		// 未知 MIME 仍按 image/png 兜底（与历史行为一致）。
-		if outMIME == "" {
-			outMIME = "image/png"
-		}
-		slog.Info("image webp conversion disabled, keep original format",
-			"source", source, "url", ref, "src_mime", srcMIME, "mime", outMIME,
-			"bytes", len(prepared))
 	case srcMIME == "":
 		// 未知格式：按 image/png 兜底透传（保持旧行为，不做无谓解码尝试）
 		outMIME = "image/png"
