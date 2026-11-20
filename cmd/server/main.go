@@ -23,6 +23,7 @@ import (
 	"github.com/helloxz/ztag/internal/ai"
 	"github.com/helloxz/ztag/internal/config"
 	"github.com/helloxz/ztag/internal/handler"
+	"github.com/helloxz/ztag/internal/helper"
 	"github.com/helloxz/ztag/internal/logger"
 	"github.com/helloxz/ztag/internal/router"
 	"github.com/helloxz/ztag/internal/service"
@@ -83,6 +84,14 @@ func main() {
 	}
 
 	// ---------- 3. 构建核心依赖（由下至上） ----------
+	// 图片处理管线（libvips）：必须在任何图片操作之前完成初始化，
+	// 否则 govips 会用默认参数启动（缓存 50MB、默认线程数），绕过低内存配置。
+	if err := helper.InitImagePipeline(); err != nil {
+		log.Fatalf("[startup failed] init image pipeline: %v", err)
+	}
+	defer helper.ShutdownImagePipeline()
+	slog.Info("image pipeline initialized", "impl", helper.ImagePipelineName())
+
 	// AI 多渠道网关 / 场景决策分析器 → 共享图片预处理器 → 各业务 service → 各 handler
 	gateway := ai.NewGateway(cfg.AI)
 	preparer := service.NewImagePreparer(cfg.AI, cfg.Server.Workers)

@@ -7,6 +7,7 @@ go 1.26.0
 toolchain go1.27.4
 
 require (
+	github.com/davidbyttow/govips/v2 v2.20.0
 	github.com/deepteams/webp v1.2.7
 	github.com/disintegration/imaging v1.6.2
 	github.com/gin-gonic/gin v1.12.0

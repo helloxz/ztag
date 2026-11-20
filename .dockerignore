@@ -1,0 +1,9 @@
+# 构建上下文裁剪：镜像编译只需要源码与依赖清单
+.git/
+.github/
+bin/
+data/
+.openchamber/
+docs/
+*.log
+*.tar.gz

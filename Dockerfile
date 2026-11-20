@@ -1,32 +1,52 @@
+# syntax=docker/dockerfile:1
 # ============================================================
-# ztag Dockerfile - 基于 debian:12-slim，下载官方 release 二进制
+# ztag 镜像（linux/amd64）：图片管线使用 libvips（cgo）
+#
+# 构建阶段与运行阶段统一使用 Debian 12：libvips 是动态库，
+# 跨发行版构建会因 glibc / time_t（t64 迁移）不一致而无法运行。
+#
+# 完整源码构建（不依赖 release 资产）：
 # 构建: docker build -t ztag:latest .
-# 构建（锁定版本）: docker build --build-arg VERSION=v0.2.3 -t ztag:v0.2.3 .
 # 运行: docker run -d -p 18080:18080 -v ztag-data:/app/data --name ztag ztag:latest
 # ============================================================
+
+# ---------- 构建阶段 ----------
+FROM golang:1.27-bookworm AS builder
+
+# libvips 开发头文件 + pkg-config 是 govips 的编译前提
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libvips-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+# 先拷贝依赖清单，命中层缓存
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+# 图片管线固定使用 libvips（internal/helper/image_vips.go）。
+RUN CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o /out/ztag ./cmd/server \
+    && /out/ztag --version
+
+# ---------- 运行阶段 ----------
 FROM debian:12-slim
 
 LABEL maintainer="helloxz/ztag" \
-      description="ztag - Image content recognition API (pure Go)"
+      description="ztag - Image content recognition API (libvips image pipeline)"
+
+# libvips42 为运行时库（Debian 12 为 8.14.1，与构建阶段一致）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl libvips42 \
+    && rm -rf /var/lib/apt/lists/*
+
+# glib 多线程 malloc arena 会放大碎片，压到 2 个可显著降低 RSS 增长
+ENV MALLOC_ARENA_MAX=2
 
 WORKDIR /app
 
-# 1. 安装脚本：负责安装运行时工具（curl/tar/file）并下载 release 二进制
-COPY scripts/docker-install.sh /tmp/docker-install.sh
-
-ARG TARGETARCH
-
-# 可选：锁定要下载的 release 版本（形如 v0.2.3）；为空时解析 latest
-# CI 中必须传入，否则 latest 受 GitHub API 缓存影响，会出现版本漂移/不可复现
-ARG VERSION=""
-
-RUN chmod +x /tmp/docker-install.sh \
-    && /tmp/docker-install.sh "${TARGETARCH}" "${VERSION}" \
-    && rm -f /tmp/docker-install.sh
-
-# 2. 入口脚本：处理空卷场景与参数透传
+COPY --from=builder /out/ztag /app/ztag
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /app/ztag /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 18080
 

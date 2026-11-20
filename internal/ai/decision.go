@@ -138,8 +138,28 @@ type DecisionInput struct {
 	Channel string               // 指定决策渠道 id，为空则轮询
 }
 
+// ImageFormat 决策渠道期望的图片输入格式。
+// 用于让预处理层"一次出对格式"，避免先转 WebP 再由渠道客户端解码转 JPEG 的二次有损编码。
+type ImageFormat int
+
+const (
+	// FormatWebP 通用渠道（gemini-decision / openai-decision）：WebP，体积小、上游普遍支持。
+	FormatWebP ImageFormat = iota
+	// FormatJPEG 只接受 JPEG/PNG 的渠道（systemone-decision），要求每边 ≤1568、不能有动画。
+	FormatJPEG
+)
+
+// DecisionChannelTarget 一次决策请求解析出的渠道与图片格式。
+type DecisionChannelTarget struct {
+	ID     string      // 渠道 id（Evaluate 时原样回传，保证预处理用的就是实际调用的渠道）
+	Format ImageFormat // 该渠道期望的输入图片格式
+}
+
 // DecisionAnalyzer 场景识别与风险评估能力接口。
 type DecisionAnalyzer interface {
+	// Resolve 解析本次请求将使用的渠道及其图片格式（预处理据此决定输出 WebP 还是 JPEG）。
+	// channel 为空时按配置顺序轮询；返回的 ID 必须原样传给 Evaluate，避免轮询推进两次。
+	Resolve(channel string) (DecisionChannelTarget, error)
 	Evaluate(ctx context.Context, in *DecisionInput) (*model.DecisionResult, error)
 }
 
@@ -155,11 +175,12 @@ type decisionAPI interface {
 	evaluate(ctx context.Context, in *DecisionInput) (*decisionAnswers, error)
 }
 
-// decisionChannel 运行期渠道：配置 id + 协议实现 + 配置内序号。
+// decisionChannel 运行期渠道：配置 id + 协议实现 + 配置内序号 + 期望的图片格式。
 type decisionChannel struct {
-	id    string
-	api   decisionAPI
-	index int
+	id     string
+	api    decisionAPI
+	index  int
+	format ImageFormat
 }
 
 // DecisionGateway 多决策渠道网关：指定渠道或轮询，失败按策略兜底。
@@ -199,20 +220,34 @@ func NewDecisionAnalyzer(cfg config.AIConfig, workers int) DecisionAnalyzer {
 			continue
 		}
 		var api decisionAPI
+		// 只有 System One 系要求 JPEG/PNG（每边 ≤1568）；其余协议直接收 WebP
+		format := FormatWebP
 		switch ch.Type {
 		case config.DecisionChannelTypeOpenAI:
 			api = newOpenAIDecisionClient(ch, timeout)
 		case config.DecisionChannelTypeSystemOne:
 			api = newSystemOneDecisionClient(ch, timeout, imageSem)
+			format = FormatJPEG
 		default:
 			api = newGeminiDecisionClient(ch, timeout)
 		}
-		g.channels = append(g.channels, decisionChannel{id: ch.ID, api: api, index: len(g.channels)})
+		g.channels = append(g.channels, decisionChannel{id: ch.ID, api: api, index: len(g.channels), format: format})
 	}
 	if len(g.channels) == 0 {
 		return &disabledDecisionAnalyzer{}
 	}
 	return g
+}
+
+// Resolve 解析本次请求使用的渠道及其图片格式。
+// 指定 channel 时精确匹配；为空时推进一次轮询——因此调用方必须把返回的 ID
+// 原样传给 Evaluate，否则会再抽一次签，导致"按 A 渠道的格式预处理、实际发给 B 渠道"。
+func (g *DecisionGateway) Resolve(channel string) (DecisionChannelTarget, error) {
+	ch, err := g.pick(channel)
+	if err != nil {
+		return DecisionChannelTarget{}, err
+	}
+	return DecisionChannelTarget{ID: ch.id, Format: ch.format}, nil
 }
 
 // Evaluate 执行一次决策：选渠道 → 调用 → 失败按策略兜底。
@@ -407,6 +442,11 @@ func blockedDecisionResult(err *DecisionBlockedError, channelID string) *model.D
 // mockDecisionAnalyzer 模拟实现：不调用任何模型，返回固定的正常结果。
 type mockDecisionAnalyzer struct{}
 
+// Resolve 模拟渠道固定为 mock，格式按通用 WebP。
+func (m *mockDecisionAnalyzer) Resolve(channel string) (DecisionChannelTarget, error) {
+	return DecisionChannelTarget{ID: "mock", Format: FormatWebP}, nil
+}
+
 // Evaluate 返回固定的模拟结果（normal / 低风险分）。
 func (m *mockDecisionAnalyzer) Evaluate(ctx context.Context, in *DecisionInput) (*model.DecisionResult, error) {
 	return &model.DecisionResult{Category: "normal", Score: 3, Channel: "mock"}, nil
@@ -414,6 +454,11 @@ func (m *mockDecisionAnalyzer) Evaluate(ctx context.Context, in *DecisionInput) 
 
 // disabledDecisionAnalyzer 未配置实现：ai.decision.enabled = false 时使用。
 type disabledDecisionAnalyzer struct{}
+
+// Resolve 未配置时直接报错（在下载图片之前失败，避免白跑一趟预处理）。
+func (d *disabledDecisionAnalyzer) Resolve(channel string) (DecisionChannelTarget, error) {
+	return DecisionChannelTarget{}, model.NewBizError("decision model is not configured")
+}
 
 // Evaluate 始终返回未配置错误（具体原因由配置决定，便于运维定位）。
 func (d *disabledDecisionAnalyzer) Evaluate(ctx context.Context, in *DecisionInput) (*model.DecisionResult, error) {

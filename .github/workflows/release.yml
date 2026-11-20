@@ -1,6 +1,9 @@
-# Release: 推送 v* tag 时编译 Linux amd64/arm64 二进制（UPX 压缩）并发布 GitHub Release，
-#          随后构建 linux/amd64 Docker 镜像推送到 GHCR。
-# 手动补推镜像：Actions → Release → Run workflow，填入已存在的 tag（如 v0.2.3），只跑 docker job。
+# Release: 推送 v* tag 时创建 GitHub Release（仅变更说明），
+#          并构建 linux/amd64 Docker 镜像推送到 GHCR。
+# 手动补推镜像：Actions → Release → Run workflow，填入已存在的 tag，只跑 docker job。
+#
+# 说明：镜像在 Dockerfile 内从源码编译（libvips 图片管线，cgo），
+# 不再分发 tar.gz 二进制——二进制为动态链接，脱离容器需自行安装 libvips。
 name: Release
 
 on:
@@ -18,43 +21,14 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: build-${{ matrix.goarch }}
-    # workflow_dispatch 只补推镜像，不重新编译/发版
+  release:
+    name: release
+    # workflow_dispatch 只补推镜像，不重新发版
     if: github.event_name == 'push'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goarch: amd64
-            runner: ubuntu-latest
-          - goarch: arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          # 必须 >= go1.27.4：CVE-2026-111943（eMudhra 中间证书拒信）在 1.26.10/1.27.3 修复，
-          # CVE-2026-97054（net/http MaxBytesReader 竞态崩溃）在 1.26.11/1.27.4 修复。
-          # 精确锁补丁号，避免 "1.25"/"1.27" 这类写法随 setup-go 解析漂移。
-          go-version: "1.27.4"
-          cache: true
-
-      - name: Verify Go toolchain
-        run: |
-          # 二道保险：go.mod 的 toolchain 行与本步骤任一失效都要让发布失败
-          go version
-          go version | grep -q 'go1\.27\.4' || { echo "Go toolchain must be go1.27.4 (fixes CVE-2026-111943 / CVE-2026-97054)" >&2; exit 1; }
-
-      - name: Install tooling (upx)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y upx
-          upx --version
 
       - name: Resolve version from version.go
         id: version
@@ -65,7 +39,6 @@ jobs:
             VER="${GITHUB_REF_NAME}"
             echo "version.go 解析失败，回退到 tag: $VER"
           fi
-          # 容错：确保以 v 开头
           if [ -z "$VER" ]; then
             echo "无法解析版本号" >&2
             exit 1
@@ -73,86 +46,21 @@ jobs:
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VER"
 
-      - name: Build (CGO_ENABLED=0)
-        env:
-          CGO_ENABLED: "0"
-          GOOS: linux
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          echo "Building for linux/${{ matrix.goarch }} version=${{ steps.version.outputs.version }}"
-          go build -trimpath -ldflags="-s -w" -o ztag ./cmd/server
-          ls -lh ztag
-          file ztag
-          # 冒烟：验证 --version 可执行（仅本机架构可运行，交叉时跳过执行）
-          if [ "${{ matrix.goarch }}" = "amd64" ] || [ "$(uname -m)" = "aarch64" ]; then
-            ./ztag -version || ./ztag --version || true
-          fi
-
-      - name: Compress with UPX (best)
-        run: |
-          # upx --best --lzma 为最佳压缩比；失败不阻断发布（保留原二进制）
-          if upx --best --lzma ztag; then
-            echo "UPX compressed"
-          else
-            echo "UPX failed, keep original binary"
-          fi
-          ls -lh ztag
-
-      - name: Package tar.gz
-        run: |
-          VER="${{ steps.version.outputs.version }}"
-          ARCH="${{ matrix.goarch }}"
-          PKG="ztag-${VER}-linux-${ARCH}.tar.gz"
-          tar -czf "$PKG" ztag
-          ls -lh "$PKG"
-          sha256sum "$PKG" | tee "$PKG.sha256"
-          echo "pkg=$PKG" >> "$GITHUB_ENV"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ztag-${{ steps.version.outputs.version }}-linux-${{ matrix.goarch }}
-          path: |
-            ztag-*.tar.gz
-            ztag-*.tar.gz.sha256
-          if-no-files-found: error
-          retention-days: 7
-
-  release:
-    name: release
-    needs: build
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: ztag-*
-          merge-multiple: true
-          path: dist/
-
-      - name: Display artifacts
-        run: |
-          ls -lh dist/
-          sha256sum dist/* || true
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
           generate_release_notes: true
-          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ============================================================
-  # GHCR 镜像：等待 release 资产就绪后构建（Dockerfile 会下载该 tag 的二进制）
-  # 仅 linux/amd64；镜像 tag 与 git tag 对齐：v0.2.3 / 0.2.3 / 0.2 / latest
+  # GHCR 镜像：多阶段构建（debian 12 + libvips），仅 linux/amd64
+  # 镜像 tag 与 git tag 对齐：v0.2.3 / 0.2.3 / 0.2 / latest
   # ============================================================
   docker:
     name: docker-ghcr
-    needs: [build, release]
-    # 推 tag 时要求 release 成功；workflow_dispatch 时 build/release 被跳过，仅跑本 job
+    needs: [release]
+    # 推 tag 时要求 release 成功；workflow_dispatch 时 release 被跳过，仅跑本 job
     if: always() && !cancelled() && (github.event_name == 'workflow_dispatch' || needs.release.result == 'success')
     runs-on: ubuntu-latest
     permissions:
@@ -188,25 +96,6 @@ jobs:
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VER"
 
-      - name: Verify release assets exist
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          VER: ${{ steps.version.outputs.version }}
-        run: |
-          # 快速失败：镜像构建阶段会下载该 tag 的 release 资产
-          if ! gh release view "$VER" --repo "$REPO" >/dev/null 2>&1; then
-            echo "release $VER not found in $REPO" >&2
-            exit 1
-          fi
-          ASSETS="$(gh release view "$VER" --repo "$REPO" --json assets -q '.assets[].name')"
-          if ! printf '%s\n' "$ASSETS" | grep -qx "ztag-${VER}-linux-amd64.tar.gz"; then
-            echo "asset ztag-${VER}-linux-amd64.tar.gz not found in release $VER:" >&2
-            printf '%s\n' "$ASSETS" >&2
-            exit 1
-          fi
-          echo "release assets OK"
-
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -236,10 +125,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # 锁定版本，禁止 Dockerfile 回退到 latest 解析（避免版本漂移）
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=ztag-docker
           cache-to: type=gha,mode=max,scope=ztag-docker
           provenance: false
-

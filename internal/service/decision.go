@@ -34,11 +34,12 @@ func NewDecisionService(preparer *ImagePreparer, analyzer ai.DecisionAnalyzer, m
 
 // Evaluate 编排一次图片内容审核：
 //
-//	共享图片预处理（并发槽位 → URL 校验 → 下载 → 按目标格式处理 → base64）→ 决策模型
+//	解析渠道与图片格式 → 共享图片预处理 → 决策模型
 //
-// 图片预处理按请求的 convert_webp 选择：
-//   - 默认（true）：压缩转 webp，System One 渠道会在客户端自行转成 JPEG ≤1568；
-//   - false：所有渠道统一规整为 JPEG ≤1568（动画 GIF 抽帧拼图）。
+// 图片格式按"实际要调用的渠道"决定（避免二次有损编码）：
+//   - systemone-decision 只收 JPEG/PNG → 直接规整为 JPEG ≤1568；
+//   - 其余渠道 → 压缩转 WebP（体积小）；
+//   - 请求显式 convert_webp=false 时，一律规整为 JPEG ≤1568（兼容旧行为）。
 //
 // 被供应商安全策略拦截时返回 blocked（99）或 prohibited（100），
 // 并记录 Warn / Error 日志（含图片 URL 与拦截码）。
@@ -48,13 +49,18 @@ func (s *DecisionService) Evaluate(ctx context.Context, req *model.DecisionReque
 		return nil, err
 	}
 
-	target := ImageTargetWebP
-	if !req.ShouldConvertWebP() {
-		target = ImageTargetDecision
+	// 1. 先解析渠道：预处理输出格式取决于实际要调用的渠道
+	target, err := s.analyzer.Resolve(req.Channel)
+	if err != nil {
+		return nil, err
+	}
+	imageTarget := ImageTargetWebP
+	if target.Format == ai.FormatJPEG || !req.ShouldConvertWebP() {
+		imageTarget = ImageTargetDecision
 	}
 
 	prepareStart := time.Now()
-	img, err := s.preparer.Prepare(ctx, &req.ImageInput, target)
+	img, err := s.preparer.Prepare(ctx, &req.ImageInput, imageTarget)
 	prepareMs := time.Since(prepareStart).Milliseconds()
 	if err != nil {
 		return nil, err
@@ -64,7 +70,7 @@ func (s *DecisionService) Evaluate(ctx context.Context, req *model.DecisionReque
 	result, err := s.analyzer.Evaluate(ctx, &ai.DecisionInput{
 		Mode:    ai.DecisionModeImage,
 		Image:   img,
-		Channel: req.Channel,
+		Channel: target.ID, // 回传已解析的渠道 id，避免轮询再抽一次签
 	})
 	modelMs := time.Since(modelStart).Milliseconds()
 	if err != nil {

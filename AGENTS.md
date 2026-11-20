@@ -3,9 +3,11 @@
 图片内容识别 API 服务：调用后端大模型识别图片，提取关键词/描述并分类（色情、政治、血腥、暴力等），对外提供统一 HTTP API。模块 `github.com/helloxz/ztag`，Go + gin + viper(TOML) + [goai](https://github.com/zendev-sh/goai)。
 
 ## Commands
-- 编译：`./scripts/build.sh`（输出 `bin/ztag`）或 `make build`
+- 编译：`./scripts/build.sh` / `make build`（输出 `bin/ztag`）；图片管线为 libvips（cgo），编译前需 `apt-get install -y build-essential pkg-config libvips-dev`
 - 开发运行：`./scripts/dev.sh`（go run，可透传 `-config`）；默认从磁盘读管理台资源（`ZTAG_WEB_DIR=internal/webui/web`），改前端文件刷新浏览器即可，无需重启；`ZTAG_WEB_DIR= ./scripts/dev.sh` 可退回内嵌资源
 - 检查：`make vet`、`gofmt -l .`
+- 测试：`make test`（`go test ./...`，需 libvips）
+- 图片链路 A/B 基准：`./scripts/bench-images.sh`（mock AI，对比 `bin/ztag-baseline` 与 `bin/ztag` 的耗时与 VmHWM）
 - 配置：`data/config.toml`，首次启动自动从内嵌模板生成（docker 挂载 `data/` 持久化）
 
 ## Architecture（依赖单向向下，禁止跨层）
@@ -37,6 +39,7 @@ router → handler → service → ai
 - 内容审核：配置在 `[ai.decision]`（enabled/timeout/max_text_chars + `[[ai.decision.channels]]` 多渠道，type ∈ `gemini-decision | openai-decision | systemone-decision`）；请求 `channel` 指定渠道 id（旧参数 `model` 已更名，传了显式报错），不指定按配置顺序轮询；单渠道失败重试 1 次、多渠道失败换下一个渠道再试 1 次；模型拒答映射 blocked/99；缺段不阻断启动，仅决策接口返回 `decision model is not configured`
 - 内容审核接口：`POST /api/v1/image/decision`（图片）、`POST /api/v1/text/decision`（文本，受 `max_text_chars` 限制）；文本内容不落日志
 - 图片预处理统一走 `internal/service/image_prepare.go` 的 `ImagePreparer`（两个接口共用同一并发信号量）
+- 图片管线固定使用 libvips（`internal/helper/image_vips.go`，govips cgo 绑定），GIF 抽帧拼图仍用纯 Go（`image_gif.go`）；构建需 `CGO_ENABLED=1` + libvips。libvips 启动参数为 `ConcurrencyLevel=1` + 缓存全关（0 才是真关，负数才是默认值），每张图必须 `Close()`；容器内设 `MALLOC_ARENA_MAX=2` 抑制 glib 碎片（实测空闲 RSS 385MB → 195MB）。内容审核按渠道决定预处理格式：`systemone-decision` 直接出 JPEG ≤1568，其余渠道出 WebP，避免 webp→jpeg 二次有损编码
 - 根路径 `/` 为运行状态页（不暴露 /admin 入口），`/favicon.ico` 返回 204；`/healthz` 返回 `status / version / started_at`（进程启动时间，管理台重启后据此判断新实例已起）
 - 管理台重启：`POST /admin/api/restart`（需登录会话，原子去重，重复请求 409）；响应写回后 500ms 触发 main 的优雅退出，进程退出码 0，依赖 docker/k8s 的重启策略拉起
 - Web 管理台：入口 `/admin`（与 API 同端口，独立会话鉴权，不使用 API Key）。`[admin] enabled`（默认 true）控制整组路由是否注册：false 时页面/接口/静态资源统一 404（不返回 403），仅支持改配置文件、重启生效，关闭后重启接口也不可用；`[admin] username / password_hash`（bcrypt）未设置时进入初始化页（`Init` 必须逐字段赋值，不可整体替换 Admin 结构体，否则会把 enabled 重置）。账号密码改动立即生效，其余配置保存后需重启。配置按分区保存（`PUT /admin/api/config/{base|channel|decision|key}`，只覆盖本分区字段），落盘为覆盖式整体重写（go-toml ↔ viper 同一后端，不保留注释），写前跑同一套 `Validate()`，文件权限 0600。`base` 分区只覆盖 timeout/image_timeout/max_retries/max_image_bytes；`temperature`/`top_p`/`mock`/`allow_private_urls` 仅支持改配置文件，`disabled_thinking_keywords` 归 `channel` 分区（图像分析页）维护

@@ -37,6 +37,10 @@ docker compose up -d
 
 默认监听 `18080`。配置与日志保存在容器内 `/app/data`，挂载到宿主机后即可持久化（首次启动自动生成 `data/config.toml`）。
 
+> 镜像内置 libvips（图片缩放 / 转 WebP / 转 JPEG 全走 libvips），源码在镜像构建阶段编译，已装好运行时依赖，无需额外操作；并设置 `MALLOC_ARENA_MAX=2` 抑制 glib 内存碎片。
+>
+> 不再分发 `tar.gz` 二进制：产物为动态链接，脱离容器需要自行安装 libvips（`libvips42` / `libvips42t64`）。如需自行编译，见 `scripts/build.sh`。
+
 ---
 
 ## Web 管理台快速上手

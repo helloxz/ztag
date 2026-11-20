@@ -17,9 +17,30 @@ import (
 
 // stubDecisionAnalyzer 记录入参，避免真实模型调用。
 type stubDecisionAnalyzer struct {
-	got    *ai.DecisionInput
-	result *model.DecisionResult
-	err    error
+	got             *ai.DecisionInput
+	result          *model.DecisionResult
+	err             error
+	target          ai.DecisionChannelTarget // Resolve 返回的渠道与格式（ID 为空时默认 mock/WebP）
+	resErr          error
+	resolve         int    // Resolve 调用次数
+	resolvedChannel string // Resolve 收到的原始 channel 参数
+}
+
+func (s *stubDecisionAnalyzer) Resolve(channel string) (ai.DecisionChannelTarget, error) {
+	s.resolve++
+	s.resolvedChannel = channel
+	if s.resErr != nil {
+		return ai.DecisionChannelTarget{}, s.resErr
+	}
+	t := s.target
+	if t.ID == "" {
+		t.ID = "mock"
+	}
+	if channel != "" {
+		// 模拟真实网关：指定渠道 id 时精确匹配，格式仍取该渠道配置
+		t.ID = channel
+	}
+	return t, nil
 }
 
 func (s *stubDecisionAnalyzer) Evaluate(ctx context.Context, in *ai.DecisionInput) (*model.DecisionResult, error) {
@@ -167,20 +188,24 @@ func makeOversizePNG(t *testing.T) string {
 }
 
 // TestEvaluateImageTargetPolicy 校验图片预处理目标：
-//   - convert_webp=false → 所有渠道统一按决策规整（JPEG ≤1568）；
-//   - 默认（true）→ 仍压缩转 WebP（System One 渠道由客户端自行兼容）。
+//   - 渠道要求 JPEG（systemone）→ 直接规整为 JPEG ≤1568，不再走 WebP 再转码；
+//   - 通用渠道（默认）→ 压缩转 WebP；
+//   - convert_webp=false → 无论什么渠道都规整为 JPEG（兼容旧行为）。
 func TestEvaluateImageTargetPolicy(t *testing.T) {
 	imageB64 := makeOversizePNG(t)
 	no := false
 
-	newService := func() (*DecisionService, *stubDecisionAnalyzer) {
+	newService := func(target ai.DecisionChannelTarget) (*DecisionService, *stubDecisionAnalyzer) {
 		preparer := NewImagePreparer(config.AIConfig{ImageTimeout: 5, MaxImageBytes: 10 << 20}, 1)
-		stub := &stubDecisionAnalyzer{result: &model.DecisionResult{Category: "normal"}}
+		stub := &stubDecisionAnalyzer{
+			result: &model.DecisionResult{Category: "normal"},
+			target: target,
+		}
 		return NewDecisionService(preparer, stub, 10), stub
 	}
 
 	t.Run("convert_webp=false fits for all channels", func(t *testing.T) {
-		svc, stub := newService()
+		svc, stub := newService(ai.DecisionChannelTarget{})
 		if _, err := svc.Evaluate(context.Background(), &model.DecisionRequest{
 			ImageInput:  model.ImageInput{ImageBase64: imageB64},
 			ConvertWebP: &no,
@@ -198,8 +223,8 @@ func TestEvaluateImageTargetPolicy(t *testing.T) {
 		}
 	})
 
-	t.Run("default keeps webp", func(t *testing.T) {
-		svc, stub := newService()
+	t.Run("generic channel keeps webp", func(t *testing.T) {
+		svc, stub := newService(ai.DecisionChannelTarget{ID: "gemini-main", Format: ai.FormatWebP})
 		if _, err := svc.Evaluate(context.Background(), &model.DecisionRequest{
 			ImageInput: model.ImageInput{ImageBase64: imageB64},
 		}); err != nil {
@@ -212,4 +237,43 @@ func TestEvaluateImageTargetPolicy(t *testing.T) {
 			t.Errorf("MIME = %q, want image/webp", stub.got.Image.MIME)
 		}
 	})
+
+	// 核心回归：System One 渠道直接拿到 JPEG，不再"先 WebP 再解码转 JPEG"
+	t.Run("jpeg channel avoids double encode", func(t *testing.T) {
+		svc, stub := newService(ai.DecisionChannelTarget{ID: "jev-main", Format: ai.FormatJPEG})
+		if _, err := svc.Evaluate(context.Background(), &model.DecisionRequest{
+			ImageInput: model.ImageInput{ImageBase64: imageB64},
+		}); err != nil {
+			t.Fatalf("Evaluate returned error: %v", err)
+		}
+		if stub.got == nil || stub.got.Image == nil {
+			t.Fatal("analyzer did not receive image input")
+		}
+		if stub.got.Image.MIME != "image/jpeg" {
+			t.Errorf("MIME = %q, want image/jpeg", stub.got.Image.MIME)
+		}
+		if stub.got.Channel != "jev-main" {
+			t.Errorf("channel = %q, want jev-main（必须回传 Resolve 得到的渠道，避免轮询推进两次）", stub.got.Channel)
+		}
+	})
+}
+
+// TestEvaluateResolveErrorAbortsBeforePrepare 渠道解析失败时不应下载/处理图片。
+func TestEvaluateResolveErrorAbortsBeforePrepare(t *testing.T) {
+	preparer := NewImagePreparer(config.AIConfig{ImageTimeout: 5, MaxImageBytes: 10 << 20}, 1)
+	stub := &stubDecisionAnalyzer{resErr: model.NewBizError("decision model is not configured")}
+	svc := NewDecisionService(preparer, stub, 10)
+
+	_, err := svc.Evaluate(context.Background(), &model.DecisionRequest{
+		ImageInput: model.ImageInput{ImageBase64: makeOversizePNG(t)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "not configured") {
+		t.Fatalf("err = %v, want decision model is not configured", err)
+	}
+	if stub.got != nil {
+		t.Error("analyzer should not be called when resolve fails")
+	}
+	if stub.resolve != 1 {
+		t.Errorf("resolve calls = %d, want 1", stub.resolve)
+	}
 }

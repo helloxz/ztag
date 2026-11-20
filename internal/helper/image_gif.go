@@ -1,16 +1,12 @@
 package helper
 
-// 决策模型（System One / Jev 系渠道）图片规整。
+// 决策渠道的 GIF 处理与公共 JPEG 编码助手。
 //
-// 上游对图片有明确限制（例如 microsoft/microsoft-decision-1.1 只收 PNG/JPEG、
-// 每边 280~1568），而默认预处理会统一转成 WebP，所以决策渠道需要单独走一条
-// 规整链路：
-//   - JPEG/PNG 且尺寸合规 → 原样透传，避免无谓的二次有损压缩；
-//   - BMP、静态 WebP、静态 GIF → 解码后按需缩放，统一输出 JPEG；
-//   - 动画 GIF → 均匀抽帧（默认 4 帧）拼成一张网格 JPEG，避免只取首帧漏内容；
-//   - 动画 WebP、AVIF 等 → 返回明确错误，不把不兼容的图送去上游。
-//
-// 输出统一为 JPEG（透明通道合成为白底），最长边不超过 decisionImageMaxSide。
+// GIF 抽帧拼图使用纯 Go 实现（imaging + stdlib），原因：
+//   - 动画 GIF 需要按 disposal 规则回放后均匀抽帧拼成网格，libvips 的
+//     页面语义无法直接表达"按时间均匀采样 + 网格拼接"；
+//   - GIF 体积小、出现频率低，走纯 Go 不算瓶颈。
+
 import (
 	"bytes"
 	"fmt"
@@ -21,79 +17,8 @@ import (
 	"image/jpeg"
 	"math"
 
-	"github.com/deepteams/webp" // 静态 WebP 解码 + 动画探测
 	"github.com/disintegration/imaging"
 )
-
-const (
-	decisionImageMaxSide = 1568 // 上游允许的每边上限
-	decisionJPEGQuality  = 88   // 决策模型图片质量（审核场景不宜过低）
-	gifContactFrames     = 4    // 动画 GIF 抽帧数（3~5 之间）
-	gifContactGap        = 4    // 拼图单元格之间的留白（像素）
-	maxGIFDecodeFrames   = 600  // 动画帧数上限，防止极端 GIF 长时间占用 CPU
-)
-
-// FitDecisionImage 把图片规整为决策模型可接受的形式：JPEG，每边 ≤ 1568。
-//
-// 返回值中的 MIME 固定为 image/jpeg；已是合规 JPEG/PNG 时原样返回。
-// 任意格式不兼容或解码失败都返回错误，由调用方直接报错（不回退原图）。
-func FitDecisionImage(data []byte, srcMIME string) (out []byte, outMIME string, err error) {
-	switch srcMIME {
-	case "image/jpeg", "image/png":
-		return fitStaticImage(data, srcMIME)
-	case "image/gif":
-		return fitGIFImage(data)
-	case "image/bmp":
-		return convertStaticImage(data)
-	case "image/webp":
-		if feat, ferr := webp.GetFeatures(bytes.NewReader(data)); ferr == nil && feat.HasAnimation {
-			return nil, "", fmt.Errorf("animated webp is not supported for this decision channel, please convert it to JPEG/PNG")
-		}
-		return convertStaticImage(data)
-	default:
-		if srcMIME == "" {
-			return nil, "", fmt.Errorf("unsupported or unrecognized image format for this decision channel")
-		}
-		return nil, "", fmt.Errorf("unsupported image format for this decision channel: %s", srcMIME)
-	}
-}
-
-// fitStaticImage 处理 JPEG/PNG：尺寸合规直接透传，否则缩放并转 JPEG。
-func fitStaticImage(data []byte, srcMIME string) ([]byte, string, error) {
-	cfg, _, err := decodeConfigGuarded(data)
-	if err != nil {
-		return nil, "", err
-	}
-	if cfg.Width <= decisionImageMaxSide && cfg.Height <= decisionImageMaxSide {
-		return data, srcMIME, nil
-	}
-
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, "", fmt.Errorf("decode image failed: %w", err)
-	}
-	out, err := encodeDecisionJPEG(img)
-	if err != nil {
-		return nil, "", err
-	}
-	return out, "image/jpeg", nil
-}
-
-// convertStaticImage 处理需要转码的静态格式（BMP / 静态 WebP）。
-func convertStaticImage(data []byte) ([]byte, string, error) {
-	if _, _, err := decodeConfigGuarded(data); err != nil {
-		return nil, "", err
-	}
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, "", fmt.Errorf("decode image failed: %w", err)
-	}
-	out, err := encodeDecisionJPEG(img)
-	if err != nil {
-		return nil, "", err
-	}
-	return out, "image/jpeg", nil
-}
 
 // fitGIFImage 处理 GIF：单帧按静态图转 JPEG；多帧抽帧拼成一张网格 JPEG。
 func fitGIFImage(data []byte) ([]byte, string, error) {
@@ -247,7 +172,7 @@ func buildGIFContactSheet(frames []image.Image) ([]byte, string, error) {
 	return buf.Bytes(), "image/jpeg", nil
 }
 
-// encodeDecisionJPEG 缩放（如需要）、白底合成并编码为 JPEG。
+// encodeDecisionJPEG 缩放（如需要）、白底合成并编码为 JPEG（GIF 路径使用）。
 func encodeDecisionJPEG(img image.Image) ([]byte, error) {
 	scaled := scaleToMaxSide(img, decisionImageMaxSide)
 	flat := flattenOnWhite(scaled)
@@ -275,19 +200,4 @@ func flattenOnWhite(img image.Image) image.Image {
 	draw.Draw(dst, dst.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
 	draw.Draw(dst, dst.Bounds(), img, bounds.Min, draw.Over)
 	return dst
-}
-
-// decodeConfigGuarded 读取图片尺寸并做解压炸弹防护。
-func decodeConfigGuarded(data []byte) (image.Config, string, error) {
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil {
-		return image.Config{}, "", fmt.Errorf("read image config failed: %w", err)
-	}
-	if cfg.Width <= 0 || cfg.Height <= 0 {
-		return image.Config{}, "", fmt.Errorf("invalid image dimensions: %dx%d", cfg.Width, cfg.Height)
-	}
-	if int64(cfg.Width)*int64(cfg.Height) > maxDecodePixels {
-		return image.Config{}, "", fmt.Errorf("image too large to decode (%dx%d pixels, exceeds %d)", cfg.Width, cfg.Height, maxDecodePixels)
-	}
-	return cfg, format, nil
 }
