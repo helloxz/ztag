@@ -62,8 +62,8 @@ func TestEvaluateTextPassesTrimmedText(t *testing.T) {
 	svc := NewDecisionService(nil, stub, 10)
 
 	result, err := svc.EvaluateText(context.Background(), &model.TextDecisionRequest{
-		Text:  "  加微信领福利  ",
-		Model: "openai-main",
+		Text:    "  加微信领福利  ",
+		Channel: "openai-main",
 	})
 	if err != nil {
 		t.Fatalf("EvaluateText returned error: %v", err)
@@ -80,8 +80,67 @@ func TestEvaluateTextPassesTrimmedText(t *testing.T) {
 	if stub.got.Text != "加微信领福利" {
 		t.Errorf("text = %q, want trimmed text", stub.got.Text)
 	}
-	if stub.got.Model != "openai-main" {
-		t.Errorf("model = %q, want openai-main", stub.got.Model)
+	if stub.got.Channel != "openai-main" {
+		t.Errorf("channel = %q, want openai-main", stub.got.Channel)
+	}
+}
+
+// TestEvaluateImagePassesChannel 图片审核把 channel 透传给决策网关。
+func TestEvaluateImagePassesChannel(t *testing.T) {
+	preparer := NewImagePreparer(config.AIConfig{ImageTimeout: 5, MaxImageBytes: 10 << 20}, 1)
+	stub := &stubDecisionAnalyzer{result: &model.DecisionResult{Category: "normal"}}
+	svc := NewDecisionService(preparer, stub, 10)
+
+	if _, err := svc.Evaluate(context.Background(), &model.DecisionRequest{
+		ImageInput: model.ImageInput{ImageBase64: makeOversizePNG(t)},
+		Channel:    "gemini-main",
+	}); err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if stub.got == nil {
+		t.Fatal("analyzer not called")
+	}
+	if stub.got.Channel != "gemini-main" {
+		t.Errorf("channel = %q, want gemini-main", stub.got.Channel)
+	}
+}
+
+// TestRejectLegacyModelParam 旧参数 model 必须显式报错：
+// JSON 绑定会静默忽略未知字段，若不拦截，老调用方会悄悄退化成「按配置轮询」。
+func TestRejectLegacyModelParam(t *testing.T) {
+	stub := &stubDecisionAnalyzer{result: &model.DecisionResult{Category: "normal"}}
+	svc := NewDecisionService(nil, stub, 10)
+
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{"text", func() error {
+			_, err := svc.EvaluateText(context.Background(), &model.TextDecisionRequest{
+				Text:        "hi",
+				LegacyModel: "openai-main",
+			})
+			return err
+		}},
+		{"image", func() error {
+			// 校验先于图片预处理：即使没提供图片，也应先报改名错误
+			_, err := svc.Evaluate(context.Background(), &model.DecisionRequest{
+				LegacyModel: "gemini-main",
+			})
+			return err
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call()
+			if err == nil || !strings.Contains(err.Error(), `parameter "model" was renamed to "channel"`) {
+				t.Fatalf("err = %v, want rename hint", err)
+			}
+			if stub.got != nil {
+				t.Error("analyzer should not be called with legacy parameter")
+			}
+		})
 	}
 }
 

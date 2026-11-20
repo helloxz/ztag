@@ -7,6 +7,9 @@
 > 功能：调用**决策模型**做场景分类 + 风险评分，不生成任何文本，因此没有 `keywords` / `description` / `risk_reason`。
 > 支持多个决策渠道，三种协议：Gemini Decision 1（native）、OpenAI 兼容 Decisions API、System One（Jev 系）。
 
+> **破坏性变更**：请求参数 `model` 与响应字段 `model_id` 已统一更名为 `channel`（语义本来就是「决策渠道 id」）。
+> 旧参数 `model` 不再生效，传了会直接返回 `parameter "model" was renamed to "channel"`，不会静默降级为轮询。
+
 ---
 
 ## 1. 基本信息
@@ -29,7 +32,7 @@
 |---|---|---|---|
 | `image_url` | string | 二选一 | 图片 HTTP(S) 地址，由服务端下载 |
 | `image_base64` | string | 二选一 | 图片 base64 内容（可带 `data:` 前缀） |
-| `model` | string | 否 | 决策渠道 id（见 `[[ai.decision.channels]]`）；不传则按配置顺序轮询 |
+| `channel` | string | 否 | 决策渠道 id（见 `[[ai.decision.channels]]`）；不传则按配置顺序轮询 |
 | `convert_webp` | bool | 否 | 是否把图片压缩转为 WebP，缺省 `true`。传 `false` 时所有渠道统一规整为 JPEG ≤1568（动画 GIF 抽帧拼图）；默认 `true` 仍转 WebP，仅 `systemone-decision` 渠道会在客户端自行转成 JPEG ≤1568 |
 
 ### 2.2 文本接口
@@ -37,14 +40,14 @@
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `text` | string | 是 | 待审核文本，长度受 `ai.decision.max_text_chars`（默认 4000）限制 |
-| `model` | string | 否 | 决策渠道 id；不传则轮询 |
+| `channel` | string | 否 | 决策渠道 id；不传则轮询 |
 
 请求示例：
 
 ```json
 { "image_url": "https://example.com/demo.jpg" }
-{ "image_url": "https://example.com/demo.jpg", "model": "openai-main", "convert_webp": false }
-{ "text": "加微信 xxx 领福利，稳赚不赔", "model": "openai-main" }
+{ "image_url": "https://example.com/demo.jpg", "channel": "openai-main", "convert_webp": false }
+{ "text": "加微信 xxx 领福利，稳赚不赔", "channel": "openai-main" }
 ```
 
 > `convert_webp=false` 只影响图片接口：所有渠道统一规整为 JPEG ≤1568（不再转 WebP，动画 GIF 抽帧拼图）；默认 `true` 时仍转 WebP，仅 `systemone-decision` 渠道会在客户端再转成 JPEG ≤1568。图片分析接口不支持该参数。
@@ -74,7 +77,7 @@ Authorization: Bearer <api_key>
   "data": {
     "category": "porn",
     "score": 87,
-    "model_id": "gemini-main",
+    "channel": "gemini-main",
     "elapsed_ms": 312
   }
 }
@@ -84,7 +87,7 @@ Authorization: Bearer <api_key>
 |---|---|---|
 | `category` | string | 场景分类，图片与文本枚举不同（见 4.2） |
 | `score` | number(int) | 风险分 **0~100**，越大风险越高 |
-| `model_id` | string | 实际处理本次请求的决策渠道 id（轮询或指定后的真实渠道） |
+| `channel` | string | 实际处理本次请求的决策渠道 id（轮询或指定后的真实渠道） |
 | `elapsed_ms` | int | 请求处理总耗时（毫秒）；图片接口含下载/校验/压缩，文本接口只有模型调用 |
 
 ### 4.2 分类枚举（category）
@@ -185,7 +188,8 @@ Authorization: Bearer <api_key>
 | URL 非法 | `invalid image URL format` / `image URL must be http(s), got: ...` |
 | 图片超限 / 非图片 / SSRF | 同 `/image/analyze` |
 | 未配置决策模型 | `decision model is not configured` |
-| 指定的渠道不存在 | `decision model "<id>" not found, available: <ids>` |
+| 指定的渠道不存在 | `decision channel "<id>" not found, available: <ids>` |
+| 使用了旧参数 `model` | `parameter "model" was renamed to "channel"` |
 | 所有尝试都失败 | `decision analysis failed` |
 | 模型返回缺字段 | `decision response missing category answer: <name>` / `decision response missing risk severity score` |
 | 鉴权失败（HTTP 401） | `unauthorized or invalid API key` |
@@ -215,7 +219,7 @@ curl -X POST http://127.0.0.1:18080/api/v1/text/decision \
 # 文本：指定决策渠道
 curl -X POST http://127.0.0.1:18080/api/v1/text/decision \
   -H "Content-Type: application/json" \
-  -d '{"text":"……","model":"openai-main"}'
+  -d '{"text":"……","channel":"openai-main"}'
 
 # 开启鉴权后
 curl -X POST http://127.0.0.1:18080/api/v1/image/decision \
@@ -237,7 +241,7 @@ max_text_chars = 4000    # 文本审核字符上限
 # 注意：启用总开关前，至少要把一个渠道的 enabled 改为 true，
 # 否则配置校验失败（ai.decision.channels must have at least one enabled channel）。
 [[ai.decision.channels]]
-id = "gemini-main"       # 渠道 id：调用时 model 填这个值；需唯一
+id = "gemini-main"       # 渠道 id：调用时 channel 填这个值；需唯一
 type = "gemini-decision" # gemini-decision | openai-decision | systemone-decision
 enabled = false          # 默认关闭，需要时改成 true
 base_url = "https://generativelanguage.googleapis.com"
@@ -270,8 +274,8 @@ resolution = "high"      # low | medium | high | ultra_high
 
 路由与兜底：
 
-- 请求带 `model` → 精确匹配渠道 id（只在该渠道上尝试）；
-- 不带 `model` → 按配置顺序**轮询**；
+- 请求带 `channel` → 精确匹配渠道 id（只在该渠道上尝试）；
+- 不带 `channel` → 按配置顺序**轮询**；
 - 单次失败：还有其它渠道就换下一个再试一次，只有一个渠道就用它重试一次；仍失败返回 `decision analysis failed`；
 - 所有尝试的渠道 id 与错误都会写日志，便于排查。
 

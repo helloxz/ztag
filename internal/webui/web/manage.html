@@ -275,7 +275,7 @@
 
             <div class="test-actions">
               <button type="button" data-variant="secondary" id="dec-add-channel">添加渠道</button>
-              <span class="hint">未指定 model 时按配置顺序轮询；失败时换下一个渠道再试一次</span>
+              <span class="hint">未指定 channel 时按配置顺序轮询；失败时换下一个渠道再试一次</span>
             </div>
           </section>
         </section>
@@ -1091,7 +1091,7 @@
           <div data-field>
             <label>渠道 id</label>
             <input data-field="id" aria-label="渠道 id" placeholder="gemini-main" spellcheck="false">
-            <span data-hint>调用时 model 填这个值；小写字母/数字/下划线/中划线</span>
+            <span data-hint>调用时 channel 填这个值；小写字母/数字/下划线/中划线</span>
           </div>
           <div data-field>
             <label>协议类型</label>
@@ -1445,12 +1445,12 @@
       const api = testApi();
       const model = $('test-model').value;
 
-      // 文本审核：只要 text（+ 可选 model）
+      // 文本审核：只要 text（+ 可选 channel）
       if (api === 'decision' && testDecisionMode() === 'text') {
         const text = $('test-text').value.trim();
         if (!text) return null;
         const payload = { text };
-        if (model) payload.model = model;
+        if (model) payload.channel = model;
         return payload;
       }
 
@@ -1476,8 +1476,8 @@
           payload.convert_webp = false;
         }
         if (model) {
-          // 内容审核的 model 是决策渠道 id
-          payload.model = model;
+          // 内容审核的 channel 是决策渠道 id
+          payload.channel = model;
         }
       }
       return payload;
@@ -1540,7 +1540,7 @@
       lines.push("  -H 'Content-Type: application/json' \\");
       if (key) lines.push('  -H ' + shellQuote('Authorization: Bearer ' + key) + ' \\');
       if (useFile) {
-        // 文件模式：用 $IMG 占位，其余字段（model / convert_webp 等）一并保留；
+        // 文件模式：用 $IMG 占位，其余字段（model / channel / convert_webp 等）一并保留；
         // 整个 JSON 放在双引号里，shell 才会展开 $IMG
         const json = JSON.stringify({ ...payload, image_base64: '$IMG' });
         lines.push('  -d ' + '"' + json.replace(/"/g, '\\"') + '"');

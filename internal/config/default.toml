@@ -90,7 +90,7 @@ timeout = 30             # 单次调用超时（秒），<=0 回退 30s
 max_text_chars = 4000    # 文本审核字符上限，超长直接报错
 
 [[ai.decision.channels]]
-id = "gemini-main"       # 渠道 id：调用时 model 填这个值；小写字母/数字/下划线/中划线，需唯一
+id = "gemini-main"       # 渠道 id：调用时 channel 填这个值；小写字母/数字/下划线/中划线，需唯一
 type = "gemini-decision" # 协议类型
 enabled = false          # 单渠道开关：默认关闭，需要时改成 true（总开关也要开）
 base_url = "https://generativelanguage.googleapis.com" # 实际请求 {base_url}/v1beta/decisions

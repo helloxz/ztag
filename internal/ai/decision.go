@@ -132,10 +132,10 @@ var decisionSeverityCriteria = []string{
 
 // DecisionInput 一次决策的输入。
 type DecisionInput struct {
-	Mode  string               // DecisionModeImage | DecisionModeText
-	Text  string               // Mode=text 时必填
-	Image *model.PreparedImage // Mode=image 时必填
-	Model string               // 指定决策渠道 id，为空则轮询
+	Mode    string               // DecisionModeImage | DecisionModeText
+	Text    string               // Mode=text 时必填
+	Image   *model.PreparedImage // Mode=image 时必填
+	Channel string               // 指定决策渠道 id，为空则轮询
 }
 
 // DecisionAnalyzer 场景识别与风险评估能力接口。
@@ -221,7 +221,7 @@ func (g *DecisionGateway) Evaluate(ctx context.Context, in *DecisionInput) (*mod
 		return nil, err
 	}
 
-	first, err := g.pick(in.Model)
+	first, err := g.pick(in.Channel)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func (g *DecisionGateway) pick(name string) (*decisionChannel, error) {
 			ids = append(ids, ch.id)
 		}
 		return nil, model.NewBizError(fmt.Sprintf(
-			"decision model %q not found, available: %s", name, strings.Join(ids, ", ")))
+			"decision channel %q not found, available: %s", name, strings.Join(ids, ", ")))
 	}
 
 	idx := (g.rr.Add(1) - 1) % uint64(len(g.channels))
@@ -378,7 +378,7 @@ func toDecisionResult(mode string, answers *decisionAnswers, channelID string) (
 	return &model.DecisionResult{
 		Category:      bestCategory,
 		Score:         score,
-		ModelID:       channelID,
+		Channel:       channelID,
 		Confidence:    confidence,
 		Probabilities: answers.Probabilities,
 	}, nil
@@ -393,7 +393,7 @@ func blockedDecisionResult(err *DecisionBlockedError, channelID string) *model.D
 	result := &model.DecisionResult{
 		Category:       model.CategoryBlocked,
 		Score:          decisionBlockedScore,
-		ModelID:        channelID,
+		Channel:        channelID,
 		BlockedCode:    err.Code,
 		BlockedMessage: err.Message,
 	}
@@ -409,7 +409,7 @@ type mockDecisionAnalyzer struct{}
 
 // Evaluate 返回固定的模拟结果（normal / 低风险分）。
 func (m *mockDecisionAnalyzer) Evaluate(ctx context.Context, in *DecisionInput) (*model.DecisionResult, error) {
-	return &model.DecisionResult{Category: "normal", Score: 3, ModelID: "mock"}, nil
+	return &model.DecisionResult{Category: "normal", Score: 3, Channel: "mock"}, nil
 }
 
 // disabledDecisionAnalyzer 未配置实现：ai.decision.enabled = false 时使用。

@@ -82,7 +82,7 @@ type DecisionConfig struct {
 
 // DecisionChannelConfig 单个决策渠道。
 type DecisionChannelConfig struct {
-	ID         string `mapstructure:"id" toml:"id" json:"id"`                         // 渠道 id（调用时 model 填这个值）
+	ID         string `mapstructure:"id" toml:"id" json:"id"`                         // 渠道 id（调用时 channel 填这个值）
 	Type       string `mapstructure:"type" toml:"type" json:"type"`                   // 协议类型：gemini-decision | openai-decision | systemone-decision
 	Enabled    bool   `mapstructure:"enabled" toml:"enabled" json:"enabled"`          // 单渠道开关
 	BaseURL    string `mapstructure:"base_url" toml:"base_url" json:"base_url"`       // 接口基础地址

@@ -44,6 +44,10 @@ func NewDecisionService(preparer *ImagePreparer, analyzer ai.DecisionAnalyzer, m
 // 并记录 Warn / Error 日志（含图片 URL 与拦截码）。
 // 响应字段 elapsed_ms 由 handler 层填充；此处只在日志里拆分 prepare_ms / model_ms，便于定位瓶颈。
 func (s *DecisionService) Evaluate(ctx context.Context, req *model.DecisionRequest) (*model.DecisionResult, error) {
+	if err := rejectLegacyModelParam(req.LegacyModel); err != nil {
+		return nil, err
+	}
+
 	target := ImageTargetWebP
 	if !req.ShouldConvertWebP() {
 		target = ImageTargetDecision
@@ -58,9 +62,9 @@ func (s *DecisionService) Evaluate(ctx context.Context, req *model.DecisionReque
 
 	modelStart := time.Now()
 	result, err := s.analyzer.Evaluate(ctx, &ai.DecisionInput{
-		Mode:  ai.DecisionModeImage,
-		Image: img,
-		Model: req.Model,
+		Mode:    ai.DecisionModeImage,
+		Image:   img,
+		Channel: req.Channel,
 	})
 	modelMs := time.Since(modelStart).Milliseconds()
 	if err != nil {
@@ -80,6 +84,10 @@ func (s *DecisionService) Evaluate(ctx context.Context, req *model.DecisionReque
 //
 // 文本不经过图片预处理，直接交给决策模型；日志里只记录长度，不落原文。
 func (s *DecisionService) EvaluateText(ctx context.Context, req *model.TextDecisionRequest) (*model.DecisionResult, error) {
+	if err := rejectLegacyModelParam(req.LegacyModel); err != nil {
+		return nil, err
+	}
+
 	text := strings.TrimSpace(req.Text)
 	if text == "" {
 		return nil, model.NewBizError("text must not be empty")
@@ -90,9 +98,9 @@ func (s *DecisionService) EvaluateText(ctx context.Context, req *model.TextDecis
 
 	modelStart := time.Now()
 	result, err := s.analyzer.Evaluate(ctx, &ai.DecisionInput{
-		Mode:  ai.DecisionModeText,
-		Text:  text,
-		Model: req.Model,
+		Mode:    ai.DecisionModeText,
+		Text:    text,
+		Channel: req.Channel,
 	})
 	modelMs := time.Since(modelStart).Milliseconds()
 	if err != nil {
@@ -104,25 +112,36 @@ func (s *DecisionService) EvaluateText(ctx context.Context, req *model.TextDecis
 	return result, nil
 }
 
+// rejectLegacyModelParam 拒绝已弃用的 model 参数。
+//
+// 旧参数名的实际含义一直是决策渠道 id；直接改名会让老调用方被 JSON 绑定静默忽略，
+// 误按「不指定渠道、按配置顺序轮询」处理，因此这里显式报错，把问题暴露给调用方。
+func rejectLegacyModelParam(legacy string) error {
+	if strings.TrimSpace(legacy) != "" {
+		return model.NewBizError(`parameter "model" was renamed to "channel"`)
+	}
+	return nil
+}
+
 // logDecisionResult 按结果级别记录日志：极危拦截 Error、普通拦截 Warn、正常 Debug。
 func logDecisionResult(result *model.DecisionResult, mode, source, ref string, prepareMs, modelMs int64) {
 	switch result.Category {
 	case model.CategoryProhibited:
 		// 极危拦截（通常为 CSAM）：需要立即处置（停来源 / 不落盘 / 按法规上报）
 		slog.Error("decision input flagged as prohibited content, handle per incident runbook",
-			"mode", mode, "source", source, "ref", ref, "channel", result.ModelID,
+			"mode", mode, "source", source, "ref", ref, "channel", result.Channel,
 			"provider_code", result.BlockedCode, "provider_message", result.BlockedMessage,
 			"category", result.Category, "score", result.Score,
 			"prepare_ms", prepareMs, "model_ms", modelMs)
 	case model.CategoryBlocked:
 		slog.Warn("decision input blocked or declined by provider",
-			"mode", mode, "source", source, "ref", ref, "channel", result.ModelID,
+			"mode", mode, "source", source, "ref", ref, "channel", result.Channel,
 			"provider_code", result.BlockedCode, "provider_message", result.BlockedMessage,
 			"category", result.Category, "score", result.Score,
 			"prepare_ms", prepareMs, "model_ms", modelMs)
 	default:
 		slog.Debug("decision evaluated",
-			"mode", mode, "source", source, "ref", ref, "channel", result.ModelID,
+			"mode", mode, "source", source, "ref", ref, "channel", result.Channel,
 			"category", result.Category, "score", result.Score, "confidence", result.Confidence,
 			"prepare_ms", prepareMs, "model_ms", modelMs)
 	}

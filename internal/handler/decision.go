@@ -34,11 +34,11 @@ const maxTextRequestBody = 64 << 10
 //
 //	{ "image_url": "https://example.com/x.jpg" }
 //	或 { "image_base64": "<base64 内容>" }
-//	可选 { "model": "gemini-main" } 指定决策渠道，缺省按配置顺序轮询
+//	可选 { "channel": "gemini-main" } 指定决策渠道，缺省按配置顺序轮询
 //
 // 响应为统一结构 { code, msg, data }，data 包含场景分类、风险评分、实际渠道与总耗时：
 //
-//	{ "category": "porn", "score": 87, "model_id": "gemini-main", "elapsed_ms": 312 }
+//	{ "category": "porn", "score": 87, "channel": "gemini-main", "elapsed_ms": 312 }
 func (h *DecisionHandler) Evaluate(c *gin.Context) {
 	// 记录请求起始时间，用于计算总处理耗时（毫秒）
 	start := time.Now()
@@ -70,9 +70,9 @@ func (h *DecisionHandler) Evaluate(c *gin.Context) {
 // 请求体示例：
 //
 //	{ "text": "加微信 xxx 领福利" }
-//	可选 { "model": "openai-main" } 指定决策渠道
+//	可选 { "channel": "openai-main" } 指定决策渠道
 //
-// 文本与图片使用各自独立的分类白名单，响应结构一致（含 model_id / elapsed_ms）。
+// 文本与图片使用各自独立的分类白名单，响应结构一致（含 channel / elapsed_ms）。
 func (h *DecisionHandler) EvaluateText(c *gin.Context) {
 	start := time.Now()
 

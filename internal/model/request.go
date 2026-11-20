@@ -24,10 +24,14 @@ type AnalyzeRequest struct {
 }
 
 // DecisionRequest 场景决策（图片）请求体。
-// Model 可选：指定决策渠道 id（见 ai.decision.channels），为空则由服务端轮询。
+// Channel 可选：指定决策渠道 id（见 ai.decision.channels），为空则由服务端轮询。
 type DecisionRequest struct {
 	ImageInput
-	Model string `json:"model"` // 可选：决策渠道 id
+	Channel string `json:"channel"` // 可选：决策渠道 id
+
+	// LegacyModel 已弃用：旧参数名 model（实际含义一直是渠道 id）。
+	// 仅用于把老调用方的请求显式拒绝掉，避免被 JSON 绑定静默忽略后误按轮询处理。
+	LegacyModel string `json:"model"`
 
 	// ConvertWebP 可选：是否把图片压缩转为 WebP，缺省（不传）为 true。
 	// 传 false 时为兼容模式：所有决策渠道统一规整为 JPEG ≤1568。
@@ -41,8 +45,11 @@ func (r *DecisionRequest) ShouldConvertWebP() bool {
 
 // TextDecisionRequest 场景决策（文本）请求体。
 type TextDecisionRequest struct {
-	Text  string `json:"text"`  // 待审核文本
-	Model string `json:"model"` // 可选：决策渠道 id
+	Text    string `json:"text"`    // 待审核文本
+	Channel string `json:"channel"` // 可选：决策渠道 id
+
+	// LegacyModel 已弃用：旧参数名 model，非空时由 service 层拒绝并提示改用 channel。
+	LegacyModel string `json:"model"`
 }
 
 // PreparedImage 预处理完成的图片产物（下载/校验/压缩转 webp 后）。
@@ -56,7 +63,7 @@ type PreparedImage struct {
 type DecisionResult struct {
 	Category  string `json:"category"`   // 场景分类（固定枚举，见 ai 层白名单）
 	Score     int    `json:"score"`      // 风险评分 0~100：越大风险越高；99 为自然判定与普通拦截的上限，100 表示极危拦截（prohibited）
-	ModelID   string `json:"model_id"`   // 实际处理的决策渠道 id（由 ai 层填充）
+	Channel   string `json:"channel"`    // 实际处理的决策渠道 id（由 ai 层填充）
 	ElapsedMs int64  `json:"elapsed_ms"` // 本次请求处理总耗时（毫秒），由 handler 层在响应前填充
 
 	// 内部字段：供 service 层记录日志，不参与对外 JSON

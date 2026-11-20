@@ -90,7 +90,7 @@ X-API-Key: <api_key>
 |---|---|---|---|
 | `image_url` | string | 二选一 | 图片地址 |
 | `image_base64` | string | 二选一 | 图片 base64 |
-| `model` | string | 否 | 决策渠道 id，不传按配置顺序轮询 |
+| `channel` | string | 否 | 决策渠道 id，不传按配置顺序轮询 |
 
 ### 响应 data
 
@@ -98,7 +98,7 @@ X-API-Key: <api_key>
 |---|---|---|
 | `category` | string | 分类，见下表 |
 | `score` | int | 风险分 0~100，越大越危险 |
-| `model_id` | string | 实际渠道 id |
+| `channel` | string | 实际渠道 id |
 | `elapsed_ms` | number | 总耗时（毫秒） |
 
 ```json
@@ -108,7 +108,7 @@ X-API-Key: <api_key>
   "data": {
     "category": "porn",
     "score": 87,
-    "model_id": "gemini-main",
+    "channel": "gemini-main",
     "elapsed_ms": 312
   }
 }
@@ -130,15 +130,15 @@ X-API-Key: <api_key>
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `text` | string | 是 | 待审核文本，长度 ≤ `ai.decision.max_text_chars`（默认 4000） |
-| `model` | string | 否 | 决策渠道 id，不传轮询 |
+| `channel` | string | 否 | 决策渠道 id，不传轮询 |
 
 ```json
-{ "text": "加微信 xxx 领福利，稳赚不赔", "model": "openai-main" }
+{ "text": "加微信 xxx 领福利，稳赚不赔", "channel": "openai-main" }
 ```
 
 ### 响应
 
-同图片审核：`category` / `score` / `model_id` / `elapsed_ms`。
+同图片审核：`category` / `score` / `channel` / `elapsed_ms`。
 
 文本分类：`normal` `spam` `ads` `porn` `politics` `abuse` `fraud` `illegal` `other_risk` `blocked` `prohibited`
 
@@ -165,7 +165,8 @@ X-API-Key: <api_key>
 | 图片超限/非图片 | `image too large (exceeds N bytes)` / `not an image (Content-Type: "...")` |
 | SSRF 拦截 | `url target "..." is not allowed (private/reserved address)` |
 | 决策模型未配置 | `decision model is not configured` |
-| 决策渠道不存在 | `decision model "x" not found, available: ...` |
+| 决策渠道不存在 | `decision channel "x" not found, available: ...` |
+| 使用了旧参数 `model` | `parameter "model" was renamed to "channel"` |
 | 决策全部失败 | `decision analysis failed` |
 | 分析全部失败 | `AI analysis failed on both channels` |
 | 鉴权失败（HTTP 401） | `unauthorized or invalid API key` |

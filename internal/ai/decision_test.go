@@ -128,8 +128,8 @@ func TestGeminiImageSuccess(t *testing.T) {
 	if result.Confidence != 0.9 {
 		t.Errorf("confidence = %v, want 0.9", result.Confidence)
 	}
-	if result.ModelID != "test-"+config.DecisionChannelTypeGemini {
-		t.Errorf("model_id = %q, want test channel id", result.ModelID)
+	if result.Channel != "test-"+config.DecisionChannelTypeGemini {
+		t.Errorf("channel = %q, want test channel id", result.Channel)
 	}
 	if len(result.Probabilities) != len(decisionCategoryOrder(DecisionModeImage)) {
 		t.Errorf("probabilities size = %d, want %d", len(result.Probabilities), len(decisionCategoryOrder(DecisionModeImage)))
@@ -392,7 +392,7 @@ func newMultiChannelGateway(t *testing.T, handlers ...http.HandlerFunc) *Decisio
 	return gw
 }
 
-// TestGatewayRoundRobin 未指定模型时按配置顺序轮询。
+// TestGatewayRoundRobin 未指定渠道时按配置顺序轮询。
 func TestGatewayRoundRobin(t *testing.T) {
 	okHandler := func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, geminiAnswers(t, DecisionModeImage, "normal", 0.9, 0))
@@ -405,47 +405,50 @@ func TestGatewayRoundRobin(t *testing.T) {
 		if err != nil {
 			t.Fatalf("call %d returned error: %v", i, err)
 		}
-		if result.ModelID != wantID {
-			t.Errorf("call %d model_id = %q, want %q", i, result.ModelID, wantID)
+		if result.Channel != wantID {
+			t.Errorf("call %d channel = %q, want %q", i, result.Channel, wantID)
 		}
 	}
 }
 
-// TestGatewayExplicitModel 指定渠道 id 时精确命中，不用轮询。
-func TestGatewayExplicitModel(t *testing.T) {
+// TestGatewayExplicitChannel 指定渠道 id 时精确命中，不用轮询。
+func TestGatewayExplicitChannel(t *testing.T) {
 	okHandler := func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, geminiAnswers(t, DecisionModeImage, "normal", 0.9, 0))
 	}
 	gw := newMultiChannelGateway(t, okHandler, okHandler)
 
 	in := imageInput()
-	in.Model = "ch-1"
+	in.Channel = "ch-1"
 	for i := 0; i < 3; i++ {
 		result, err := gw.Evaluate(context.Background(), in)
 		if err != nil {
 			t.Fatalf("returned error: %v", err)
 		}
-		if result.ModelID != "ch-1" {
-			t.Errorf("model_id = %q, want ch-1", result.ModelID)
+		if result.Channel != "ch-1" {
+			t.Errorf("channel = %q, want ch-1", result.Channel)
 		}
 	}
 }
 
-// TestGatewayUnknownModel 未知渠道 id 报错并带可用列表。
-func TestGatewayUnknownModel(t *testing.T) {
+// TestGatewayUnknownChannel 未知渠道 id 报错并带可用列表。
+func TestGatewayUnknownChannel(t *testing.T) {
 	okHandler := func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, geminiAnswers(t, DecisionModeImage, "normal", 0.9, 0))
 	}
 	gw := newMultiChannelGateway(t, okHandler, okHandler)
 
 	in := imageInput()
-	in.Model = "nope"
+	in.Channel = "nope"
 	_, err := gw.Evaluate(context.Background(), in)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("err = %v, want not found", err)
 	}
 	if !strings.Contains(err.Error(), "ch-0") || !strings.Contains(err.Error(), "ch-1") {
 		t.Errorf("err = %v, want available channel ids", err)
+	}
+	if !strings.Contains(err.Error(), "decision channel") {
+		t.Errorf("err = %v, want channel wording", err)
 	}
 }
 
@@ -464,8 +467,8 @@ func TestGatewayFallbackToNextChannel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate returned error: %v", err)
 	}
-	if result.ModelID != "ch-1" {
-		t.Errorf("model_id = %q, want fallback channel ch-1", result.ModelID)
+	if result.Channel != "ch-1" {
+		t.Errorf("channel = %q, want fallback channel ch-1", result.Channel)
 	}
 	if result.Category != "gambling" {
 		t.Errorf("category = %q, want gambling", result.Category)
