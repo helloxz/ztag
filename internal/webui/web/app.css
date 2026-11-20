@@ -4,6 +4,40 @@ body {
   min-height: 100dvh;
 }
 
+/* ---------------- 全局滚动条 ---------------- */
+
+/* Chromium / Safari：细滚动条，轨道透明，滑块用边框色，悬停时加深 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: var(--border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox：只支持标准属性。Chromium 一旦识别 scrollbar-width/color 就会忽略
+   ::-webkit-scrollbar 定制，所以用 @supports 把标准属性限定在非 webkit 内核。 */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}
+
 /* ---------------- 登录 / 初始化页 ---------------- */
 
 .auth-wrap {
@@ -804,6 +838,61 @@ input.mono {
 
 .docs-error p {
   margin: 0 0 var(--space-3);
+}
+
+/* ---------------- 运行日志 ---------------- */
+
+/* 日志正文：固定高度内部滚动；长行不折行，超出部分横向滚动 */
+.log-box {
+  height: min(60vh, 34rem);
+  overflow: auto;
+  /* 左侧内边距去掉，交给行号伪元素提供，横向滚动时行号才能贴住左边 */
+  padding: var(--space-3) var(--space-4) var(--space-3) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  background-color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-8);
+  line-height: 1.6;
+  overscroll-behavior: contain;
+  counter-reset: logline; /* 行号计数器：每次重绘从 1 开始，属于“当前窗口内序号” */
+}
+
+/* 一行一条，不折行：内容再长也只出横向滚动条 */
+.log-line {
+  min-width: max-content;
+  white-space: pre;
+  color: var(--muted-foreground);
+  counter-increment: logline;
+}
+
+/* 行号：伪元素绘制，不占 DOM、不进入复制内容；
+   sticky 让横向滚动时行号仍贴在左侧，背景色遮住从下方滑过的正文 */
+.log-line::before {
+  content: counter(logline);
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1; /* 压住横向滚动时从下方滑过的正文 */
+  display: inline-block;
+  width: calc(var(--space-4) + 4ch); /* 3ch 数字位 + 1ch 间距，含左侧留白 */
+  padding-inline: var(--space-4) 1ch;
+  text-align: end;
+  background-color: var(--faint);
+  color: var(--faint-foreground);
+  user-select: none;
+}
+
+.log-line[data-level="warn"] {
+  color: var(--warning);
+}
+
+.log-line[data-level="error"] {
+  color: var(--danger);
+}
+
+.log-empty {
+  padding-inline-start: var(--space-4);
+  color: var(--muted-foreground);
 }
 
 [hidden] {

@@ -44,4 +44,5 @@ router → handler → service → ai
 - 管理台重启：`POST /admin/api/restart`（需登录会话，原子去重，重复请求 409）；响应写回后 500ms 触发 main 的优雅退出，进程退出码 0，依赖 docker/k8s 的重启策略拉起
 - Web 管理台：入口 `/admin`（与 API 同端口，独立会话鉴权，不使用 API Key）。`[admin] enabled`（默认 true）控制整组路由是否注册：false 时页面/接口/静态资源统一 404（不返回 403），仅支持改配置文件、重启生效，关闭后重启接口也不可用；`[admin] username / password_hash`（bcrypt）未设置时进入初始化页（`Init` 必须逐字段赋值，不可整体替换 Admin 结构体，否则会把 enabled 重置）。账号密码改动立即生效，其余配置保存后需重启。配置按分区保存（`PUT /admin/api/config/{base|channel|decision|key}`，只覆盖本分区字段），落盘为覆盖式整体重写（go-toml ↔ viper 同一后端，不保留注释），写前跑同一套 `Validate()`，文件权限 0600。`base` 分区只覆盖 timeout/image_timeout/max_retries/max_image_bytes；`temperature`/`top_p`/`mock`/`allow_private_urls` 仅支持改配置文件，`disabled_thinking_keywords` 归 `channel` 分区（图像分析页）维护
 - 本机 `:8080` / `:18080` 可能被环境占用，本地验证建议换端口
+- 运行日志页：`GET /admin/api/logs?limit=` 倒读 `data/logs` 下最新日志文件尾部（默认 200 行、上限 500 行、单行 4KB 截断、单次最多倒读 4MB），只含 WARN/ERROR；需登录会话，响应 `Cache-Control: no-store`
 - 路线图：真实模型接入 → 图片下载/校验助手 → 渠道失败切换 → 限流落地 → 分类阈值可配置

@@ -94,6 +94,8 @@ func SetupRouter(cfg *config.Config, hs *Handlers) *gin.Engine {
 				authed.GET("/config", hs.Admin.GetConfig)
 				// API 文档：服务端抓取并缓存 24 小时
 				authed.GET("/docs", hs.Admin.Docs)
+				// 运行日志：倒读 data/logs 下最新文件的尾部（仅 WARN/ERROR）
+				authed.GET("/logs", hs.Admin.Logs)
 				// 按分区保存：只覆盖本分区的字段，其余配置保持不变
 				authed.PUT("/config/base", hs.Admin.SaveBase)
 				authed.PUT("/config/channel", hs.Admin.SaveChannels)

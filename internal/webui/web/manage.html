@@ -23,6 +23,7 @@
           <li><a href="#key" data-section="key">API 密钥</a></li>
           <li><a href="#test" data-section="test">接口调试</a></li>
           <li><a href="#docs" data-section="docs">API 文档</a></li>
+          <li><a href="#logs" data-section="logs">运行日志</a></li>
           <li><a href="#more" data-section="more">其它</a></li>
           <li><a href="#account" data-section="account">账号</a></li>
         </ul>
@@ -478,6 +479,27 @@
           </section>
         </section>
 
+        <!-- 运行日志 -->
+        <section id="panel-logs" hidden>
+          <p class="page-intro">
+            展示 <code>data/logs</code> 下最新日志文件的尾部内容：服务端只倒读文件最后若干行，不加载整份文件。
+            日志文件只记录 <b>WARN / ERROR</b>（INFO 与访问日志输出到容器标准输出），按天切分并保留 7 天，重启不会清空。
+          </p>
+
+          <section class="card">
+            <header class="card-head">
+              <h3>运行日志</h3>
+              <span class="hint" id="logs-meta"></span>
+              <span class="spacer"></span>
+              <label class="switch-row"><input type="checkbox" role="switch" id="logs-auto" checked> 自动刷新</label>
+              <button type="button" data-variant="secondary" id="logs-refresh">刷新</button>
+              <button type="button" data-variant="secondary" id="logs-copy">复制</button>
+            </header>
+
+            <div class="log-box" id="log-box" role="log" aria-label="运行日志"></div>
+          </section>
+        </section>
+
         <!-- 其它产品 / 关注作者 -->
         <section id="panel-more" hidden>
           <section class="card">
@@ -630,6 +652,7 @@
       key: 'API 密钥',
       test: '接口调试',
       docs: 'API 文档',
+      logs: '运行日志',
       more: '其它产品',
       account: '账号',
     };
@@ -821,7 +844,7 @@
       $('page-title').textContent = SECTIONS[name];
 
       // 账号、接口调试、API 文档、其它产品没有配置保存动作；其它分区还有未保存改动时给出提示
-      const noSave = name === 'account' || name === 'test' || name === 'docs' || name === 'more';
+      const noSave = name === 'account' || name === 'test' || name === 'docs' || name === 'logs' || name === 'more';
       showMsg($('msg'), '');
       $('save-bar').hidden = noSave;
       if (noSave && dirtySections().length) {
@@ -829,6 +852,9 @@
       }
       if (name === 'test') updateTestState();
       if (name === 'docs') loadDocs();
+      // 运行日志只在打开该分区时轮询，离开立即停止
+      if (name === 'logs') startLogs();
+      else stopLogs();
       renderDirtyState();
 
       // 切分区时回到内容顶部，避免停在上一页的滚动位置
@@ -927,6 +953,99 @@
         $('docs-body').removeAttribute('aria-busy');
       }
     }
+
+    // ---------- 运行日志 ----------
+
+    // 页面只保留最近 300 行：够排查问题，又不会拖慢渲染
+    const LOG_LINES = 300;
+    let logTimer = null;
+    let logSnapshot = { file: '', size: -1 };
+    let logLines = [];
+
+    // logLevelOf 从 slog 文本行里取级别（格式固定为 time=… level=WARN msg=…），只用于着色
+    function logLevelOf(line) {
+      const m = /^time=\S+\s+level=(\w+)/.exec(line);
+      return m ? m[1] : '';
+    }
+
+    // renderLogs 重画日志框；行号由 CSS 计数器生成，不额外占 DOM
+    function renderLogs() {
+      const box = $('log-box');
+      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+      const prevTop = box.scrollTop;
+      const frag = document.createDocumentFragment();
+
+      logLines.forEach((line) => {
+        const row = document.createElement('div');
+        row.className = 'log-line';
+        row.dataset.level = logLevelOf(line).toLowerCase();
+        row.textContent = line;
+        frag.appendChild(row);
+      });
+
+      box.textContent = '';
+      if (!logLines.length) {
+        const empty = document.createElement('div');
+        empty.className = 'log-empty';
+        empty.textContent = '暂无日志（只有 WARN / ERROR 会写入日志文件）';
+        box.appendChild(empty);
+        return;
+      }
+      box.appendChild(frag);
+      // 停在底部时跟随最新日志，往上翻看时不打断阅读
+      box.scrollTop = atBottom ? box.scrollHeight : prevTop;
+    }
+
+    // loadLogs 拉取日志尾部；文件大小没变化时跳过重绘
+    async function loadLogs(force) {
+      try {
+        const data = await apiCall('/admin/api/logs?limit=' + LOG_LINES);
+        const lines = data.lines || [];
+        $('logs-meta').textContent = data.file
+          ? data.file + ' · ' + formatBytes(data.size) + ' · 最近 ' + lines.length + ' 条'
+          : '暂无日志文件';
+        if (!force && data.file === logSnapshot.file && data.size === logSnapshot.size) return;
+        logSnapshot = { file: data.file || '', size: data.size };
+        logLines = lines;
+        renderLogs();
+      } catch (err) {
+        $('logs-meta').textContent = err.message;
+      }
+    }
+
+    // stopLogs 停止轮询（离开日志分区时调用）
+    function stopLogs() {
+      if (logTimer) {
+        clearInterval(logTimer);
+        logTimer = null;
+      }
+    }
+
+    // startLogs 进入日志分区：先拉一次，再每 2.5 秒轮询（页面不可见时跳过）
+    function startLogs() {
+      stopLogs();
+      loadLogs(true);
+      logTimer = setInterval(() => {
+        if (document.visibilityState === 'visible' && $('logs-auto').checked) loadLogs(false);
+      }, 2500);
+    }
+
+    $('logs-auto').addEventListener('change', () => {
+      if ($('logs-auto').checked) loadLogs(false);
+    });
+    $('logs-refresh').addEventListener('click', () => loadLogs(true));
+    $('logs-copy').addEventListener('click', async () => {
+      if (!logLines.length) return;
+      try {
+        await navigator.clipboard.writeText(logLines.join('\n'));
+        $('logs-copy').textContent = '已复制';
+        setTimeout(() => {
+          $('logs-copy').textContent = '复制';
+        }, 1500);
+      } catch (_) {
+        showMsg($('msg'), '复制失败，请手动选中日志复制', 'warning');
+      }
+    });
 
     // setFieldsDisabled 统一控制一组字段的禁用态（含下拉触发器）
     function setFieldsDisabled(root, disabled) {

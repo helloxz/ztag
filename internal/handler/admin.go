@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -23,13 +24,14 @@ import (
 type AdminHandler struct {
 	svc        *service.AdminService
 	docs       *service.DocsService
+	logs       *service.LogsService
 	restart    func()      // 触发进程优雅退出（由 main 注入，退出后由容器编排拉起）
 	restarting atomic.Bool // 防止并发重复重启
 }
 
 // NewAdminHandler 构建管理台处理器。restart 为空表示当前运行环境不支持重启。
-func NewAdminHandler(svc *service.AdminService, docs *service.DocsService, restart func()) *AdminHandler {
-	return &AdminHandler{svc: svc, docs: docs, restart: restart}
+func NewAdminHandler(svc *service.AdminService, docs *service.DocsService, logs *service.LogsService, restart func()) *AdminHandler {
+	return &AdminHandler{svc: svc, docs: docs, logs: logs, restart: restart}
 }
 
 // ValidSession 供管理台会话中间件复用（避免中间件反向依赖 service 包）。
@@ -184,6 +186,29 @@ func (h *AdminHandler) Docs(c *gin.Context) {
 	// 缓存由服务端管理，禁止浏览器再缓存一份
 	c.Header("Cache-Control", "no-store")
 	helper.OK(c, doc)
+}
+
+// Logs 处理 GET /admin/api/logs：返回最新日志文件尾部若干行。
+// limit 为期望行数（缺省 200，最大 500），只倒读文件尾部，不解析日志格式。
+func (h *AdminHandler) Logs(c *gin.Context) {
+	limit := 0
+	if raw := c.Query("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			limit = v
+		}
+	}
+	if h.logs == nil {
+		helper.Fail(c, "logs service is not configured")
+		return
+	}
+	res, err := h.logs.Tail(limit)
+	if err != nil {
+		helper.FailWithError(c, err)
+		return
+	}
+	// 日志内容随运行变化，禁止浏览器缓存
+	c.Header("Cache-Control", "no-store")
+	helper.OK(c, res)
 }
 
 // SaveBase 处理 PUT /admin/api/config/base：只保存基础配置分区。
